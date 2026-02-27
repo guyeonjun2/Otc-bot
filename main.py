@@ -118,13 +118,13 @@ async def on_guild_join(guild):
 @bot.command()
 async def otc(ctx):
     embed = discord.Embed(
-        title="🪙 레재 코인대행",
+        title="🪙 레제 코인대행",
         color=discord.Color.blue()
     )
     embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
     embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
     embed.add_field(name="⏰ 마지막 갱신", value=last_update, inline=False)
-    embed.set_footer(text="24시간 운영 | 안전 OTC")
+    embed.set_footer(text="24시간 운영 | 레제 코인대행")
     await ctx.send(embed=embed, view=OTCView())
 
 bot.run(TOKEN)
