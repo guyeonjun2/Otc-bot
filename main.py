@@ -1,10 +1,14 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
 import datetime
 
 TOKEN = os.getenv("TOKEN")
 
+# ====== 🔔 충전 로그 보낼 채널 ID (여기 수정) ======
+LOG_CHANNEL_ID = 1476576109436076085  # ← 네 로그 채널 ID 넣기
+
+# ====== 인텐트 설정 ======
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -22,19 +26,57 @@ class OTCView(discord.ui.View):
 
     @discord.ui.button(label="💰 충전", style=discord.ButtonStyle.primary)
     async def charge(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("관리자에게 문의해주세요.", ephemeral=True)
+
+        # 유저에게 보이는 메시지
+        await interaction.response.send_message(
+            "✅ 충전 요청이 접수되었습니다. 잠시만 기다려주세요.",
+            ephemeral=True
+        )
+
+        # ===== 특정 채널에 로그 전송 =====
+        log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
+
+        if log_channel:
+            embed = discord.Embed(
+                title="💰 충전 요청 알림",
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.now()
+            )
+
+            embed.add_field(
+                name="👤 요청자",
+                value=f"{interaction.user} ({interaction.user.id})",
+                inline=False
+            )
+
+            embed.add_field(
+                name="📍 서버",
+                value=interaction.guild.name,
+                inline=False
+            )
+
+            await log_channel.send(embed=embed)
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("송금 접수 요청이 접수되었습니다.", ephemeral=True)
+        await interaction.response.send_message(
+            "📤 송금 접수 요청이 접수되었습니다.",
+            ephemeral=True
+        )
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("OTC 운영 정보입니다.", ephemeral=True)
+        await interaction.response.send_message(
+            "📊 OTC 운영 정보입니다.",
+            ephemeral=True
+        )
 
     @discord.ui.button(label="🧮 계산기", style=discord.ButtonStyle.secondary)
     async def calc(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("계산기 기능은 추후 추가됩니다.", ephemeral=True)
+        await interaction.response.send_message(
+            "🧮 계산기 기능은 추후 추가됩니다.",
+            ephemeral=True
+        )
 
 # ====== 봇 실행시 ======
 @bot.event
@@ -46,14 +88,15 @@ async def on_ready():
 @bot.command()
 async def otc(ctx):
     embed = discord.Embed(
-        title="REZE OTC [코인송금대행]",
+        title="🪙 레재 코인 송금 대행",
         color=discord.Color.blue()
     )
+
     embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
     embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
     embed.add_field(name="⏰ 마지막 갱신", value=last_update, inline=False)
 
-    embed.set_footer(text="신속 , 친절 | 안전 OTC")
+    embed.set_footer(text="24시간 운영 | 안전 OTC")
 
     await ctx.send(embed=embed, view=OTCView())
 
