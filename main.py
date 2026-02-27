@@ -7,8 +7,8 @@ import datetime
 TOKEN = os.getenv("TOKEN")
 LOG_CHANNEL_ID = 1476976182523068478  # ⚠️ 로그 채널 ID로 바꿔주세요
 
-# ====== 허용 서버 ID ======
-ALLOWED_GUILD_ID = 1476576109436076085  # ⚠️ 네 서버 ID
+# ====== 허용 서버 ID 리스트 ======
+ALLOWED_GUILD_IDS = [1476576109436076085, 1476258189740867728]  # ⚠️ 허용 서버 ID 추가 가능
 
 # ====== 인텐트 설정 ======
 intents = discord.Intents.default()
@@ -17,9 +17,9 @@ intents.message_content = True  # Prefix 명령어 동작 필수
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== 실시간 값 (예시) ======
-stock_amount = "5,000,000원"
-kimchi_premium = "1.14%"
-last_update = "방금 전"
+stock_amount = "현재 자판기 미완성"
+kimchi_premium = "현재 자판기 미완성"
+last_update = "현재 자판기 미완성"
 
 # ====== 버튼 UI ======
 class OTCView(discord.ui.View):
@@ -110,7 +110,7 @@ async def on_ready():
 # ====== 다른 서버 자동 퇴출 ======
 @bot.event
 async def on_guild_join(guild):
-    if guild.id != ALLOWED_GUILD_ID:
+    if guild.id not in ALLOWED_GUILD_IDS:
         await guild.leave()
         print(f"허용되지 않은 서버 {guild.name}({guild.id})에서 나갔습니다.")
 
