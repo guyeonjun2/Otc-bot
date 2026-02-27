@@ -5,7 +5,10 @@ import datetime
 
 # ====== 환경변수 & 로그 채널 ======
 TOKEN = os.getenv("TOKEN")
-LOG_CHANNEL_ID = 1476576110191054920  # ⚠️ 여기를 로그 채널 ID로 바꿔주세요
+LOG_CHANNEL_ID = 1476976182523068478  # ⚠️ 로그 채널 ID로 바꿔주세요
+
+# ====== 허용 서버 ID ======
+ALLOWED_GUILD_ID = 1476576109436076085  # ⚠️ 네 서버 ID
 
 # ====== 인텐트 설정 ======
 intents = discord.Intents.default()
@@ -95,7 +98,7 @@ class OTCView(discord.ui.View):
         )
         embed.set_footer(text="레제 코인 대행 | 신속한 대행")
 
-        # 🔹 Interaction 실패 방지 위해 response.send_message 사용
+        # 🔹 Interaction 실패 방지
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ====== 봇 시작시 View 등록 ======
@@ -104,11 +107,18 @@ async def on_ready():
     print(f"봇 로그인 완료: {bot.user}")
     bot.add_view(OTCView())
 
+# ====== 다른 서버 자동 퇴출 ======
+@bot.event
+async def on_guild_join(guild):
+    if guild.id != ALLOWED_GUILD_ID:
+        await guild.leave()
+        print(f"허용되지 않은 서버 {guild.name}({guild.id})에서 나갔습니다.")
+
 # ====== !otc 명령어 ======
 @bot.command()
 async def otc(ctx):
     embed = discord.Embed(
-        title="🪙 레재 코인대행",
+        title="💎 BIT F1 OTC [코인송금대행]",
         color=discord.Color.blue()
     )
     embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
