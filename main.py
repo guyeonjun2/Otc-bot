@@ -6,6 +6,8 @@ import datetime
 TOKEN = os.getenv("TOKEN")
 
 intents = discord.Intents.default()
+intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== 실시간 값 (나중에 자동연동 가능) ======
