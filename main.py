@@ -118,7 +118,7 @@ async def on_guild_join(guild):
 @bot.command()
 async def otc(ctx):
     embed = discord.Embed(
-        title="💎 BIT F1 OTC [코인송금대행]",
+        title="🪙 레재 코인대행",
         color=discord.Color.blue()
     )
     embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
