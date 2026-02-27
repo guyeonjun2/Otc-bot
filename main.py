@@ -6,7 +6,7 @@ import datetime
 TOKEN = os.getenv("TOKEN")
 
 # ====== 🔔 충전 로그 보낼 채널 ID (여기 수정) ======
-LOG_CHANNEL_ID = 1476976182523068478  # ← 네 로그 채널 ID 넣기
+LOG_CHANNEL_ID = 123456789012345678  # ← 네 로그 채널 ID 넣기
 
 # ====== 인텐트 설정 ======
 intents = discord.Intents.default()
@@ -74,9 +74,39 @@ class OTCView(discord.ui.View):
     @discord.ui.button(label="🧮 계산기", style=discord.ButtonStyle.secondary)
     async def calc(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
-            "🧮 계산기 기능은 추후 추가됩니다.",
+            "🧮 계산기 기능은 추후 업데이트됩니다.",
             ephemeral=True
         )
+
+    @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
+    async def help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            title="❓ OTC 도움말",
+            description="레제 코인대행 사용 안내입니다.",
+            color=discord.Color.orange()
+        )
+
+        embed.add_field(
+            name="💰 충전",
+            value="충전 버튼을 누른 후 관리자를 기다려주세요 [아마 디엠 올거].",
+            inline=False
+        )
+
+        embed.add_field(
+            name="📤 송금",
+            value="입금 확인 후 송금 버튼을 누른 후 코인 선택 후 송금하기 클릭 [현재는 수동].",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🧮 계산기",
+            value="계산기 기능은 추후 업데이트 예정입니다.",
+            inline=False
+        )
+
+        embed.set_footer(text="레제 코인 대행 | 신속한 대행")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ====== 봇 실행시 ======
 @bot.event
@@ -88,7 +118,7 @@ async def on_ready():
 @bot.command()
 async def otc(ctx):
     embed = discord.Embed(
-        title="🪙 레재 코인 송금 대행",
+        title="💎 BIT F1 OTC [코인송금대행]",
         color=discord.Color.blue()
     )
 
