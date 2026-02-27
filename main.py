@@ -5,7 +5,7 @@ import datetime
 
 # ====== 환경변수 & 로그 채널 ======
 TOKEN = os.getenv("TOKEN")
-LOG_CHANNEL_ID = 1476976182523068478  # ⚠️ 여기를 로그 채널 ID로 바꿔주세요
+LOG_CHANNEL_ID = 1476576110191054920  # ⚠️ 여기를 로그 채널 ID로 바꿔주세요
 
 # ====== 인텐트 설정 ======
 intents = discord.Intents.default()
@@ -95,8 +95,8 @@ class OTCView(discord.ui.View):
         )
         embed.set_footer(text="레제 코인 대행 | 신속한 대행")
 
-        # followup 사용 → Interaction 실패 방지
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # 🔹 Interaction 실패 방지 위해 response.send_message 사용
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ====== 봇 시작시 View 등록 ======
 @bot.event
@@ -108,7 +108,7 @@ async def on_ready():
 @bot.command()
 async def otc(ctx):
     embed = discord.Embed(
-        title="🪙 레재 코인 대행",
+        title="🪙 레재 코인대행",
         color=discord.Color.blue()
     )
     embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
