@@ -6,7 +6,7 @@ import datetime
 TOKEN = os.getenv("TOKEN")
 
 # ====== 🔔 충전 로그 보낼 채널 ID (여기 수정) ======
-LOG_CHANNEL_ID = 1476576109436076085  # ← 네 로그 채널 ID 넣기
+LOG_CHANNEL_ID = 1476976182523068478  # ← 네 로그 채널 ID 넣기
 
 # ====== 인텐트 설정 ======
 intents = discord.Intents.default()
