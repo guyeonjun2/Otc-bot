@@ -9,24 +9,26 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
-class MainView(View):
+class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="송금", style=discord.ButtonStyle.primary, emoji="✈️")
-    async def send_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    # 1줄 3개 버튼
+    @discord.ui.button(label="송금", style=discord.ButtonStyle.secondary, emoji="✈️", row=0)
+    async def send_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("송금 기능입니다.", ephemeral=True)
 
-    @discord.ui.button(label="충전", style=discord.ButtonStyle.success, emoji="💳")
-    async def charge_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="충전", style=discord.ButtonStyle.secondary, emoji="💳", row=0)
+    async def charge_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("충전 기능입니다.", ephemeral=True)
 
-    @discord.ui.button(label="정보", style=discord.ButtonStyle.secondary, emoji="📊")
-    async def info_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="정보", style=discord.ButtonStyle.secondary, emoji="🎯", row=0)
+    async def info_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("정보 기능입니다.", ephemeral=True)
 
-    @discord.ui.button(label="계산", style=discord.ButtonStyle.secondary, emoji="🧮")
-    async def calc_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    # 아래 한 줄 계산 버튼
+    @discord.ui.button(label="계산", style=discord.ButtonStyle.secondary, emoji="🧮", row=1)
+    async def calc_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("계산 기능입니다.", ephemeral=True)
 
 
@@ -34,21 +36,25 @@ class MainView(View):
 async def on_ready():
     print(f"{bot.user} 로그인 완료")
 
-    channel_id = 1476942061747044463  # 🔥 여기에 채널 ID 숫자 넣기
+    channel_id = YOUR_CHANNEL_ID  # 🔥 채널 ID 입력
     channel = bot.get_channel(channel_id)
 
     embed = discord.Embed(
-        title="🪙 레제 코인대행",
-        description="신속한 코인대행",
-        color=0x2ecc71
+        description=(
+            "## 🪙 레제 코인대행\n"
+            "> 신속한 코인대행\n"
+            "\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "💰 **재고:** 인생이   📊 **김프:** 이런걸까\n"
+            "💵 **환율:** 쌰갈!!\n"
+            "\n"
+            "*괜차나...딩딩딩딩딩*\n"
+            "━━━━━━━━━━━━━━━━━━"
+        ),
+        color=0x2b2d31  # 디스코드 다크톤 느낌
     )
 
-    embed.add_field(name="💰 재고", value="개발중", inline=True)
-    embed.add_field(name="📊 김프", value="먹고살기", inline=True)
-    embed.add_field(name="💵 환율", value="힘들다", inline=False)
-    embed.add_field(name="📌 안내", value="쌰갈", inline=False)
-
-    await channel.send(embed=embed, view=MainView())
+    await channel.send(embed=embed, view=PanelView())
 
 
 bot.run(TOKEN)
