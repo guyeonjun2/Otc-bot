@@ -45,7 +45,6 @@ async def on_ready():
     embed.add_field(name="💰 재고", value="0원", inline=False)
     embed.add_field(name="📊 김프", value="0%", inline=False)
     embed.add_field(name="💵 환율", value="0원", inline=False)
-    embed.add_field(name="📌 안내", value="신속한 대행 | REZE OTC", inline=False)
 
     await channel.send(embed=embed, view=PanelView())
 
