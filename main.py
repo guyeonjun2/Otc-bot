@@ -32,14 +32,15 @@ class MyBot(commands.Bot):
         self.db = await asyncpg.create_pool(DATABASE_URL)
         await create_tables(self.db)
         await self.tree.sync()
-        self.update_premium_task.start() # 김프 자동화 시작
-        print("✅ 모든 시스템 및 자동화 가동 완료")
+        if not self.update_premium_task.is_running():
+            self.update_premium_task.start()
+        print("✅ 모든 시스템 가동 및 자동화 시작")
 
 bot = MyBot()
 
-# 전역 변수 (실시간 데이터 저장용)
+# 전역 변수
 stock_amount = "현재 자판기 미완성"
-current_k_premium = "계산 중..."
+current_k_premium = "데이터 수집 중..."
 last_update_time = "대기 중"
 
 # ====== [2. 자동화: 실시간 김프 계산] ======
@@ -48,17 +49,17 @@ async def update_premium_task():
     global current_k_premium, last_update_time
     try:
         async with aiohttp.ClientSession() as session:
-            # 업비트 시세
-            async with session.get("https://api.upbit.com/v1/ticker?markets=KRW-BTC") as resp:
-                upbit_price = (await resp.json())[0]['trade_price']
-            # 바이낸스 시세
-            async with session.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT") as resp:
-                usd_price = float((await resp.json())['price'])
-            # 실시간 환율
-            async with session.get("https://open.er-api.com/v6/latest/USD") as resp:
-                exchange_rate = (await resp.json())['rates']['KRW']
+            async with session.get("https://api.upbit.com/v1/ticker?markets=KRW-BTC", timeout=5) as resp:
+                upbit_data = await resp.json()
+                upbit_p = upbit_data[0]['trade_price']
+            async with session.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", timeout=5) as resp:
+                binance_data = await resp.json()
+                binance_p = float(binance_data['price'])
+            async with session.get("https://open.er-api.com/v6/latest/USD", timeout=5) as resp:
+                ex_data = await resp.json()
+                ex_rate = ex_data['rates']['KRW']
 
-            premium = ((upbit_price / (usd_price * exchange_rate)) - 1) * 100
+            premium = ((upbit_p / (binance_p * ex_rate)) - 1) * 100
             current_k_premium = f"{premium:.2f}%"
             last_update_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     except Exception as e:
@@ -93,7 +94,7 @@ class ApproveView(View):
 
     @discord.ui.button(label="✅ 승인", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True) # 즉시 응답
         try:
             async with bot.db.acquire() as conn:
                 async with conn.transaction():
@@ -113,7 +114,7 @@ class ApproveView(View):
                     await member.send(embed=embed)
                 except: pass
 
-            await interaction.followup.send(f"✅ 승인 완료", ephemeral=True)
+            await interaction.followup.send(f"✅ 승인 처리 완료", ephemeral=True)
             await interaction.message.delete()
         except Exception as e:
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
@@ -137,8 +138,8 @@ class OTCView(View):
         amt_input = TextInput(label="충전 금액", placeholder="숫자만 입력")
         modal.add_item(amt_input)
         async def on_modal_submit(intact: discord.Interaction):
-            await intact.response.defer(ephemeral=True)
-            if not amt_input.value.isdigit(): return await intact.followup.send("숫자만 입력!", ephemeral=True)
+            await intact.response.defer(ephemeral=True) # 모달 제출 시 즉시 응답
+            if not amt_input.value.isdigit(): return await intact.followup.send("숫자만 입력하세요.", ephemeral=True)
             async with bot.db.acquire() as conn:
                 await conn.execute("INSERT INTO deposit_requests (user_id, amount) VALUES ($1, $2::numeric)", intact.user.id, int(amt_input.value))
             await intact.followup.send("✅ 신청 완료!", ephemeral=True)
@@ -149,11 +150,11 @@ class OTCView(View):
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer() # 무반응
+        await interaction.response.defer()
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True) # 즉시 응답
         async with bot.db.acquire() as conn:
             user = await conn.fetchrow("SELECT balance, total_spent FROM users WHERE user_id = $1", interaction.user.id)
         bal = user['balance'] if user else 0
@@ -164,7 +165,7 @@ class OTCView(View):
                 role = interaction.guild.get_role(role_id)
                 current_rank = role.name if role else "알 수 없음"
                 break
-        embed = discord.Embed(title=f"👤 {interaction.user.display_name}님의 정보", color=discord.Color.blue())
+        embed = discord.Embed(title=f"👤 {interaction.user.display_name} 정보", color=discord.Color.blue())
         embed.add_field(name="🏆 현재 등급", value=f"**{current_rank}**", inline=True)
         embed.add_field(name="💰 보유 잔액", value=f"**{bal:,.0f}원**", inline=True)
         embed.add_field(name="📈 누적 이용액", value=f"**{spent:,.0f}원**", inline=False)
@@ -172,20 +173,23 @@ class OTCView(View):
 
     @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
     async def help(self, interaction: discord.Interaction, button: Button):
-        embed = discord.Embed(title="신속한 대행 | 레제 코인대행", description="**이용을 위한 간편 도움말**", color=discord.Color.orange())
+        await interaction.response.defer(ephemeral=True)
+        embed = discord.Embed(title="신속한 대행 | 레제 코인대행", color=discord.Color.orange())
         embed.add_field(name="• (💰) 충전", value="충전 요청 후 관리자 안내(DM)에 따라 입금해 주세요.", inline=False)
         embed.add_field(name="• (📊) 정보", value="현재 잔액 및 등급을 확인합니다.", inline=False)
         embed.add_field(name="• (📤) 송금", value="코인 송금 기능입니다.", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ====== [6. 메인 명령어] ======
 @bot.tree.command(name="otc", description="메뉴 호출")
 async def otc_slash(interaction: discord.Interaction):
+    # 슬래시 명령어 자체에도 defer를 걸어 안전하게 호출
+    await interaction.response.defer()
     embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
-    embed.add_field(name="💰 재고", value=f"```{stock_amount}```", inline=False) # 가독성을 위해 코드블록 추가
+    embed.add_field(name="💰 재고", value=f"```{stock_amount}```", inline=False)
     embed.add_field(name="📈 김프", value=f"```{current_k_premium}```", inline=False)
     embed.add_field(name="🕒 갱신", value=f"```{last_update_time}```", inline=False)
     embed.set_footer(text="신속한 대행 | 레제 코인대행")
-    await interaction.response.send_message(embed=embed, view=OTCView())
+    await interaction.followup.send(embed=embed, view=OTCView())
 
 if TOKEN: bot.run(TOKEN)
