@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_USER_ID = 1472930278874939445
-LOG_CHANNEL_ID = 1476976182523068478
+LOG_CHANNEL_ID = 1476976182523068478 # 운영진 전용 채널
 
 RANKS = {
     50000000: 1476788776658534501, 10000000: 1476788690696011868, 
@@ -36,11 +36,11 @@ def get_kst_now():
 class AdminVerifyApproveView(View):
     def __init__(self, target_user_id, bot):
         super().__init__(timeout=None); self.target_user_id = target_user_id; self.bot = bot
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="✅ 승인", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
         async with self.bot.db.acquire() as conn:
             await conn.execute("UPDATE users SET is_verified = TRUE WHERE user_id = $1", self.target_user_id)
-        await interaction.response.send_message(f"✅ <@{self.target_user_id}>님 인증 승인 완료", ephemeral=True)
+        await interaction.response.send_message(f"✅ <@{self.target_user_id}>님 인증 완료 처리됨.", ephemeral=True)
         try:
             user = await self.bot.fetch_user(self.target_user_id)
             await user.send("🎊 본인인증이 완료되었습니다! 이제 모든 메뉴 이용이 가능합니다.")
@@ -90,7 +90,7 @@ class MainCarrierView(View):
     @discord.ui.button(label="알뜰폰", style=discord.ButtonStyle.primary)
     async def mvno(self, interaction, btn): await interaction.response.edit_message(content="**알뜰폰 통신사를 선택해주세요.**", view=MVNOCarrierView(self.bot))
 
-# ====== [3. 자판기 메인 View (모든 버튼 및 멘트 복구)] ======
+# ====== [3. 자판기 메인 View] ======
 
 class OTCView(View):
     def __init__(self, bot):
@@ -114,7 +114,7 @@ class OTCView(View):
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def transfer(self, interaction, btn):
-        await interaction.response.send_message("📤 현재 송금 기능은 준비 중입니다. 관리자에게 문의하세요.", ephemeral=True)
+        await interaction.response.send_message("📤 현재 자동 송금 기능은 준비 중입니다. 관리자에게 문의하세요.", ephemeral=True)
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction, btn):
@@ -126,10 +126,10 @@ class OTCView(View):
         for amt, r_id in sorted(RANKS.items(), reverse=True):
             if spent >= amt:
                 role = interaction.guild.get_role(r_id)
-                current_rank = role.name if role else "등급 미설정"
+                current_rank = role.name if role else "등급 역할 없음"
                 break
 
-        embed = discord.Embed(title=f"👤 {interaction.user.name} 님의 정보", color=discord.Color.blue())
+        embed = discord.Embed(title=f"👤 {interaction.user.name} 님의 상세 정보", color=discord.Color.blue())
         embed.add_field(name="💰 보유 잔액", value=f"**{bal:,.0f}원**", inline=True)
         embed.add_field(name="📈 누적 이용액", value=f"**{spent:,.0f}원**", inline=True)
         embed.add_field(name="💎 현재 등급", value=f"**{current_rank}**", inline=False)
@@ -137,7 +137,6 @@ class OTCView(View):
 
     @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
     async def help(self, interaction, btn):
-        # 관리자님이 사용하시던 도움말 멘트 그대로 복구
         help_멘트 = (
             "━━━━━━━━━━━━━━━━━━━━\n"
             "**🪙 레제 코인대행 이용 안내**\n\n"
@@ -152,18 +151,41 @@ class OTCView(View):
         )
         await interaction.response.send_message(help_멘트, ephemeral=True)
 
-# ====== [4. 관리자 패널 및 봇 로직] ======
+# ====== [4. 운영진 전용 관리 패널] ======
 
 class AdminPanelView(View):
     def __init__(self, bot):
         super().__init__(timeout=None); self.bot = bot
+
     @discord.ui.button(label="📦 재고 수정", style=discord.ButtonStyle.primary)
-    async def edit(self, interaction, btn):
-        modal = Modal(title="재고 수정"); txt = TextInput(label="문구", default=stock_amount); modal.add_item(txt)
+    async def edit_stock(self, interaction, btn):
+        modal = Modal(title="재고 문구 수정")
+        txt = TextInput(label="내용", default=stock_amount, style=discord.TextStyle.paragraph); modal.add_item(txt)
         async def cb(intact):
             global stock_amount; stock_amount = txt.value
-            await intact.response.send_message("✅ 재고 수정 완료", ephemeral=True)
+            await intact.response.send_message(f"✅ 재고 수정 완료: {stock_amount}", ephemeral=True)
         modal.on_submit = cb; await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="💰 잔액 조절", style=discord.ButtonStyle.secondary)
+    async def edit_bal(self, interaction, btn):
+        modal = Modal(title="유저 잔액 조절")
+        u_id = TextInput(label="유저 ID"); amt = TextInput(label="조절 금액 (+/-)"); modal.add_item(u_id); modal.add_item(amt)
+        async def cb(intact):
+            async with self.bot.db.acquire() as conn:
+                await conn.execute("UPDATE users SET balance = balance + $2 WHERE user_id = $1", int(u_id.value), int(amt.value))
+            await intact.response.send_message(f"✅ ID {u_id.value} 잔액 조절 완료", ephemeral=True)
+        modal.on_submit = cb; await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🔓 인증 초기화", style=discord.ButtonStyle.danger)
+    async def reset_v(self, interaction, btn):
+        modal = Modal(title="인증 강제 해제"); u_id = TextInput(label="유저 ID"); modal.add_item(u_id)
+        async def cb(intact):
+            async with self.bot.db.acquire() as conn:
+                await conn.execute("UPDATE users SET is_verified = FALSE WHERE user_id = $1", int(u_id.value))
+            await intact.response.send_message(f"✅ ID {u_id.value} 인증 초기화 완료", ephemeral=True)
+        modal.on_submit = cb; await interaction.response.send_modal(modal)
+
+# ====== [5. 봇 클래스 및 실행 로직] ======
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -199,22 +221,32 @@ class MyBot(commands.Bot):
 
 bot = MyBot()
 
-@bot.tree.command(name="otc", description="자판기 출력")
+@bot.tree.command(name="otc", description="자판기 출력 (관리자 전용)")
 async def otc_slash(interaction: discord.Interaction):
     global last_otc_message
-    if interaction.user.id != ADMIN_USER_ID: return await interaction.response.send_message("권한 없음", ephemeral=True)
+    if interaction.user.id != ADMIN_USER_ID: return await interaction.response.send_message("❌ 관리자만 사용 가능합니다.", ephemeral=True)
     await interaction.response.defer()
     embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
-    embed.add_field(name="💰 재고", value=f"```{stock_amount}```", inline=False)
-    embed.add_field(name="📈 김프", value=f"```{current_k_premium}```", inline=False)
+    embed.add_field(name="💰 재고", value=f"```{stock_amount}```", inline=False); embed.add_field(name="📈 김프", value=f"```{current_k_premium}```", inline=False)
     embed.add_field(name="🕒 갱신 (KST)", value=f"```{last_update_time}```", inline=False)
     embed.set_footer(text="신속한 대행 | 레제 코인대행")
     last_otc_message = await interaction.followup.send(embed=embed, view=OTCView(bot))
 
-@bot.tree.command(name="관리자", description="관리자 패널 호출")
+@bot.tree.command(name="관리자", description="운영진 관리 패널 출력 (지정 채널 고정)")
 async def admin_panel(interaction: discord.Interaction):
-    if interaction.user.id != ADMIN_USER_ID or interaction.channel_id != LOG_CHANNEL_ID:
-        return await interaction.response.send_message("❌ 지정된 채널에서 관리자만 사용 가능합니다.", ephemeral=True)
-    await interaction.response.send_message("⚙️ 레제 운영진 전용 패널", view=AdminPanelView(bot), ephemeral=True)
+    # 지정된 관리 채널에서만 명령어 작동
+    if interaction.channel_id != LOG_CHANNEL_ID:
+        return await interaction.response.send_message("❌ 이 명령어는 관리자 전용 채널에서만 사용할 수 있습니다.", ephemeral=True)
+    
+    # 관리자 ID 체크
+    if interaction.user.id != ADMIN_USER_ID:
+        return await interaction.response.send_message("❌ 권한이 없습니다.", ephemeral=True)
+    
+    embed = discord.Embed(title="⚙️ 레제 운영진 전용 관리 시스템", color=discord.Color.dark_gray())
+    embed.description = "이 패널은 채널에 고정되어 모든 운영진이 함께 사용할 수 있습니다."
+    embed.add_field(name="📦 실시간 제어", value="재고 문구 수정 및 유저 상태 관리", inline=False)
+    
+    # ephemeral=False 로 설정하여 채널에 메시지가 남게 함
+    await interaction.response.send_message(embed=embed, view=AdminPanelView(bot), ephemeral=False)
 
 if TOKEN: bot.run(TOKEN)
