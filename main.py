@@ -39,14 +39,13 @@ async def on_ready():
 
     embed = discord.Embed(
         title="🪙 레제 코인대행",
-        description="신속한 코인대행",
         color=0x5865F2  # 💜 보라색 왼쪽 세로줄
     )
 
     embed.add_field(name="💰 재고", value="0원", inline=False)
     embed.add_field(name="📊 김프", value="0%", inline=False)
     embed.add_field(name="💵 환율", value="0원", inline=False)
-    embed.add_field(name="📌 안내", value="코인대행은 역시 레제코인대행", inline=False)
+    embed.add_field(name="📌 안내", value="신속한 대행 | REZE OTC", inline=False)
 
     await channel.send(embed=embed, view=PanelView())
 
