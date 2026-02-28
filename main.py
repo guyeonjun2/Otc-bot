@@ -12,16 +12,11 @@ DATABASE_URL = "postgresql://postgres:ftdLqBhVQzpuEqKhtwUILzuOepuOoMGG@centerbea
 ADMIN_USER_ID = 1472930278874939445
 LOG_CHANNEL_ID = 1476976182523068478
 
-# 등급 설정 (금액 : 역할ID)
 RANKS = {
-    50000000: 1476788776658534501, 
-    10000000: 1476788690696011868, 
-    3000000: 1476788607569104946,  
-    1000000: 1476788508076146689,  
-    500000: 1476788430850752532,   
-    300000: 1476788381940973741,   
-    100000: 1476788291448865019,   
-    0: 1476788194346274936         
+    50000000: 1476788776658534501, 10000000: 1476788690696011868, 
+    3000000: 1476788607569104946, 1000000: 1476788508076146689,  
+    500000: 1476788430850752532, 300000: 1476788381940973741,   
+    100000: 1476788291448865019, 0: 1476788194346274936         
 }
 
 intents = discord.Intents.default()
@@ -40,39 +35,24 @@ class MyBot(commands.Bot):
 
 bot = MyBot()
 
-# 실시간 정보 변수 (main.py 기본값 유지)
 stock_amount = "현재 자판기 미완성"
 kimchi_premium = "현재 자판기 미완성"
 last_update = "현재 자판기 미완성"
 
-# ====== [2. DB 초기화] ======
 async def create_tables(pool):
     async with pool.acquire() as conn:
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            balance NUMERIC DEFAULT 0,
-            total_spent NUMERIC DEFAULT 0
-        );
-        """)
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS deposit_requests (
-            id SERIAL PRIMARY KEY, user_id BIGINT, amount NUMERIC,
-            status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW()
-        );
-        """)
+        await conn.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance NUMERIC DEFAULT 0, total_spent NUMERIC DEFAULT 0);")
+        await conn.execute("CREATE TABLE IF NOT EXISTS deposit_requests (id SERIAL PRIMARY KEY, user_id BIGINT, amount NUMERIC, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW());")
 
-# ====== [3. 등급 자동 부여 로직] ======
 async def update_member_rank(member, total_spent):
-    target_role_id = 1476788194346274936 # 기본 아이언
+    target_role_id = 1476788194346274936
     for amount, role_id in sorted(RANKS.items(), reverse=True):
         if total_spent >= amount:
             target_role_id = role_id
             break
-
+    
     all_rank_ids = list(RANKS.values())
-    roles_to_remove = [discord.Object(id=rid) for rid in all_rank_ids 
-                       if rid != target_role_id and any(r.id == rid for r in member.roles)]
+    roles_to_remove = [discord.Object(id=rid) for rid in all_rank_ids if rid != target_role_id and any(r.id == rid for r in member.roles)]
     
     try:
         if roles_to_remove:
@@ -83,7 +63,6 @@ async def update_member_rank(member, total_spent):
     except:
         pass
 
-# ====== [4. 관리자 승인 뷰 (DM 전송 추가)] ======
 class ApproveView(View):
     def __init__(self, user_id, amount):
         super().__init__(timeout=None)
@@ -92,11 +71,10 @@ class ApproveView(View):
 
     @discord.ui.button(label="✅ 승인", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer(ephemeral=True) 
+        await interaction.response.defer(ephemeral=True)
         try:
             async with bot.db.acquire() as conn:
                 async with conn.transaction():
-                    # numeric 에러 방지를 위해 ::numeric 사용
                     user_data = await conn.fetchrow("""
                         INSERT INTO users (user_id, balance, total_spent) 
                         VALUES ($1, $2::numeric, $2::numeric)
@@ -105,10 +83,8 @@ class ApproveView(View):
                             total_spent = users.total_spent + EXCLUDED.total_spent
                         RETURNING total_spent, balance
                     """, self.user_id, self.amount)
-                    
                     await conn.execute("UPDATE deposit_requests SET status='approved' WHERE user_id=$1 AND amount=$2::numeric AND status='pending'", self.user_id, self.amount)
 
-            # 대상 유저에게 DM 전송
             member = interaction.guild.get_member(self.user_id)
             if member:
                 await update_member_rank(member, user_data['total_spent'])
@@ -116,20 +92,21 @@ class ApproveView(View):
                     embed = discord.Embed(title="💰 충전 완료 안내", color=discord.Color.green())
                     embed.description = f"신청하신 **{self.amount:,.0f}원**이 충전되었습니다.\n현재 잔액: **{user_data['balance']:,.0f}원**"
                     await member.send(embed=embed)
-                except:
-                    print(f"❌ {member.display_name}님에게 DM을 보낼 수 없습니다.")
+                except: pass
 
-            await interaction.message.edit(content=f"✅ <@{self.user_id}>님 충전 승인 및 DM 발송 완료", embed=None, view=None)
+            await interaction.followup.send(f"✅ <@{self.user_id}>님 승인 완료", ephemeral=True)
+            await interaction.message.delete()
         except Exception as e:
             await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
 
     @discord.ui.button(label="❌ 거절", style=discord.ButtonStyle.red)
     async def reject(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer(ephemeral=True)
         async with bot.db.acquire() as conn:
             await conn.execute("UPDATE deposit_requests SET status='rejected' WHERE user_id=$1 AND amount=$2::numeric", self.user_id, self.amount)
-        await interaction.response.edit_message(content="❌ 요청이 거절되었습니다.", embed=None, view=None)
+        await interaction.followup.send("❌ 거절 완료", ephemeral=True)
+        await interaction.message.delete()
 
-# ====== [5. 메인 UI (main.py 기반)] ======
 class OTCView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -139,48 +116,40 @@ class OTCView(View):
         modal = Modal(title="💰 충전 신청")
         amt_input = TextInput(label="충전 금액", placeholder="숫자만 입력하세요")
         modal.add_item(amt_input)
-        
         async def on_modal_submit(intact: discord.Interaction):
-            if not amt_input.value.isdigit(): return await intact.response.send_message("숫자만 입력하세요.", ephemeral=True)
+            await intact.response.defer(ephemeral=True)
+            if not amt_input.value.isdigit(): return await intact.followup.send("숫자만 입력하세요.", ephemeral=True)
             async with bot.db.acquire() as conn:
                 await conn.execute("INSERT INTO deposit_requests (user_id, amount) VALUES ($1, $2::numeric)", intact.user.id, int(amt_input.value))
-            await intact.response.send_message("✅ 충전 신청이 완료되었습니다.", ephemeral=True)
+            await intact.followup.send("✅ 충전 신청 완료!", ephemeral=True)
             log_ch = bot.get_channel(LOG_CHANNEL_ID)
-            if log_ch: await log_ch.send(f"🔔 **충전 요청**: <@{intact.user.id}>님이 {int(amt_input.value):,}원 충전을 요청했습니다.", view=ApproveView(intact.user.id, int(amt_input.value)))
-        
+            if log_ch: await log_ch.send(f"🔔 **충전 요청**: <@{intact.user.id}>님이 {int(amt_input.value):,}원 요청", view=ApproveView(intact.user.id, int(amt_input.value)))
         modal.on_submit = on_modal_submit
         await interaction.response.send_modal(modal)
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("📤 송금 기능 준비 중입니다.", ephemeral=True)
+        # 아무 반응도 없게 처리 (defer만 하고 아무것도 안 함)
+        await interaction.response.defer()
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer(ephemeral=True)
         async with bot.db.acquire() as conn:
             user = await conn.fetchrow("SELECT balance, total_spent FROM users WHERE user_id = $1", interaction.user.id)
-        
         bal = user['balance'] if user else 0
         spent = user['total_spent'] if user else 0
-        
-        # 등급 이름 찾기
         current_rank = "아이언"
         for amount, role_id in sorted(RANKS.items(), reverse=True):
             if spent >= amount:
                 role = interaction.guild.get_role(role_id)
                 current_rank = role.name if role else "알 수 없음"
                 break
-
         embed = discord.Embed(title=f"👤 {interaction.user.display_name}님의 정보", color=discord.Color.blue())
         embed.add_field(name="🏆 현재 등급", value=f"**{current_rank}**", inline=True)
         embed.add_field(name="💰 보유 잔액", value=f"**{bal:,.0f}원**", inline=True)
         embed.add_field(name="📈 누적 이용액", value=f"**{spent:,.0f}원**", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="🧮 계산기", style=discord.ButtonStyle.secondary)
-    async def calc(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("🧮 계산기 기능 업데이트 예정입니다.", ephemeral=True)
 
     @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
     async def help(self, interaction: discord.Interaction, button: Button):
@@ -190,14 +159,11 @@ class OTCView(View):
         embed.add_field(name="• (📤) 송금", value="코인 송금을 할 수 있는 버튼입니다.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ====== [6. 메인 명령어] ======
-@bot.tree.command(name="otc", description="레제 코인대행 메뉴를 호출합니다.")
+@bot.tree.command(name="otc", description="메뉴 호출")
 async def otc_slash(interaction: discord.Interaction):
     embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
-    embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=True)
-    embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=True)
-    embed.add_field(name="🕒 마지막 갱신", value=last_update, inline=False)
-    embed.set_footer(text="신속한 대행 | 레제 코인대행")
+    embed.add_field(name="💰 재고", value=stock_amount, inline=True); embed.add_field(name="📈 김프", value=kimchi_premium, inline=True)
+    embed.add_field(name="🕒 갱신", value=last_update, inline=False); embed.set_footer(text="신속한 대행 | 레제 코인대행")
     await interaction.response.send_message(embed=embed, view=OTCView())
 
 if TOKEN: bot.run(TOKEN)
