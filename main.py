@@ -17,14 +17,14 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 실시간 정보 변수 (기존 유지)
+# 실시간 정보 변수
 stock_amount = "현재 자판기 미완성"
 kimchi_premium = "현재 자판기 미완성"
-last_update = "현재 자판기 미완성"
 
 # ================= DB 초기화 =================
 async def create_tables():
     async with bot.db.acquire() as conn:
+        # 유저 테이블
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -32,11 +32,13 @@ async def create_tables():
             total_spent NUMERIC DEFAULT 0
         );
         """)
+        # 컬럼 존재 여부 체크 및 추가 (안전장치)
         try:
             await conn.execute("ALTER TABLE users ADD COLUMN total_spent NUMERIC DEFAULT 0;")
         except:
             pass
 
+        # 충전 요청 테이블
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS deposit_requests (
             id SERIAL PRIMARY KEY,
@@ -47,7 +49,7 @@ async def create_tables():
         );
         """)
 
-# ================= 승인/거절 뷰 (관리자용) =================
+# ================= 관리자 승인 뷰 (오류 수정 완료) =================
 class ApproveView(View):
     def __init__(self, user_id, amount):
         super().__init__(timeout=None)
@@ -62,10 +64,13 @@ class ApproveView(View):
 
     @discord.ui.button(label="✅ 승인", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer(ephemeral=True) # 상호작용 실패 방지
+        # 1. 상호작용 실패 방지
+        await interaction.response.defer(ephemeral=True) 
+        
         try:
             async with bot.db.acquire() as conn:
                 async with conn.transaction():
+                    # 2. 대기 중인 요청 확인
                     record = await conn.fetchrow("""
                         SELECT id FROM deposit_requests 
                         WHERE user_id=$1 AND amount=$2 AND status='pending' 
@@ -73,52 +78,59 @@ class ApproveView(View):
                     """, self.user_id, self.amount)
 
                     if not record:
-                        await interaction.followup.send("이미 처리된 요청입니다.", ephemeral=True)
+                        await interaction.followup.send("❌ 이미 처리된 요청이거나 데이터가 없습니다.", ephemeral=True)
                         return
 
+                    # 3. 상태 업데이트
                     await conn.execute("UPDATE deposit_requests SET status='approved' WHERE id=$1", record["id"])
+                    
+                    # 4. 잔액 및 누적액 합산 (::numeric으로 타입 충돌 해결)
                     await conn.execute("""
                         INSERT INTO users (user_id, balance, total_spent)
-                        VALUES ($1, $2, $2)
+                        VALUES ($1, $2::numeric, $2::numeric)
                         ON CONFLICT (user_id)
                         DO UPDATE SET 
                             balance = users.balance + EXCLUDED.balance,
                             total_spent = users.total_spent + EXCLUDED.total_spent
                     """, self.user_id, self.amount)
 
+            # 5. UI 업데이트
             await interaction.message.edit(content=f"✅ <@{self.user_id}>님 {self.amount:,.0f}원 승인 완료", embed=None, view=None)
-            await interaction.followup.send(f"정상적으로 승인되었습니다.", ephemeral=True)
+            await interaction.followup.send(f"✅ {self.amount:,.0f}원 승인 처리가 완료되었습니다.", ephemeral=True)
+            
         except Exception as e:
-            await interaction.followup.send(f"오류: {e}", ephemeral=True)
+            print(f"승인 에러 발생: {e}")
+            await interaction.followup.send(f"❌ 승인 중 오류 발생: {e}", ephemeral=True)
 
     @discord.ui.button(label="❌ 거절", style=discord.ButtonStyle.red)
     async def reject(self, interaction: discord.Interaction, button: Button):
         async with bot.db.acquire() as conn:
             await conn.execute("UPDATE deposit_requests SET status='rejected' WHERE user_id=$1 AND amount=$2", self.user_id, self.amount)
-        await interaction.response.edit_message(content="❌ 거절됨", embed=None, view=None)
+        await interaction.response.edit_message(content="❌ 요청이 거절되었습니다.", embed=None, view=None)
 
-# ================= 모달 및 메인 뷰 =================
-class DepositModal(Modal, title="💰 충전 금액 입력"):
-    amount = TextInput(label="충전 금액", placeholder="숫자만 입력하세요")
+# ================= 충전 모달 =================
+class DepositModal(Modal, title="💰 충전 신청"):
+    amount = TextInput(label="충전 금액", placeholder="숫자만 입력 (예: 10000)")
 
     async def on_submit(self, interaction: discord.Interaction):
         if not self.amount.value.isdigit():
             await interaction.response.send_message("❌ 숫자만 입력해주세요.", ephemeral=True)
             return
 
-        amount = float(self.amount.value)
+        amount = int(self.amount.value)
         async with bot.db.acquire() as conn:
             await conn.execute("INSERT INTO deposit_requests (user_id, amount) VALUES ($1, $2)", interaction.user.id, amount)
 
-        await interaction.response.send_message(f"✅ {amount:,.0f}원 충전 요청 완료!", ephemeral=True)
+        await interaction.response.send_message(f"✅ {amount:,.0f}원 충전 신청 완료!\n관리자 확인 후 처리됩니다.", ephemeral=True)
 
         log_channel = interaction.client.get_channel(LOG_CHANNEL_ID)
         if log_channel:
-            embed = discord.Embed(title="🔔 충전 요청", color=discord.Color.red(), timestamp=datetime.datetime.now())
-            embed.add_field(name="요청자", value=f"{interaction.user.mention} ({interaction.user.id})")
+            embed = discord.Embed(title="🔔 충전 요청 발생", color=discord.Color.red(), timestamp=datetime.datetime.now())
+            embed.add_field(name="신청자", value=f"{interaction.user.mention} ({interaction.user.id})")
             embed.add_field(name="금액", value=f"{amount:,.0f}원")
             await log_channel.send(embed=embed, view=ApproveView(interaction.user.id, amount))
 
+# ================= 메인 뷰 (전체 메뉴) =================
 class OTCView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -129,7 +141,7 @@ class OTCView(View):
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("📤 송금은 준비 중입니다.", ephemeral=True)
+        await interaction.response.send_message("📤 송금 기능은 현재 개발 중입니다.", ephemeral=True)
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: Button):
@@ -154,28 +166,32 @@ class OTCView(View):
 
     @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
     async def help(self, interaction: discord.Interaction, button: Button):
-        embed = discord.Embed(title="❓ OTC 도움말", description="코인 대행 이용 안내입니다.", color=discord.Color.orange())
-        embed.add_field(name="충전", value="금액 입력 후 관리자 승인을 기다리세요.", inline=False)
-        embed.set_footer(text="레제 코인 대행")
+        embed = discord.Embed(title="❓ OTC 도움말", description="코인 대행 서비스 이용 안내입니다.", color=discord.Color.orange())
+        embed.add_field(name="📌 충전 방법", value="1. '충전' 버튼 클릭\n2. 금액 입력\n3. 안내된 계좌로 입금\n4. 관리자 승인 대기", inline=False)
+        embed.add_field(name="📌 송금 방법", value="상대방의 유저 ID와 금액을 입력하여 잔액을 보냅니다.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ================= 실행 =================
+# ================= 봇 이벤트 및 명령어 =================
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     try:
         bot.db = await asyncpg.create_pool(DATABASE_URL)
         await create_tables()
-        bot.add_view(OTCView())
-        print("DB 및 메뉴 초기화 완료")
+        bot.add_view(OTCView()) # 봇 재시작 시에도 버튼 작동 유지
+        print("DB 연결 및 테이블 초기화 완료")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"DB 초기화 중 오류: {e}")
 
 @bot.command()
 async def otc(ctx):
-    embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
-    embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
-    embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
+    if ctx.guild.id not in ALLOWED_GUILD_IDS:
+        return
+        
+    embed = discord.Embed(title="🪙 레제 코인대행", description="아래 버튼을 클릭하여 서비스를 이용하세요.", color=discord.Color.blue())
+    embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=True)
+    embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=True)
+    embed.set_image(url="https://i.imgur.com/your_image_url.png") # 필요시 이미지 추가
     await ctx.send(embed=embed, view=OTCView())
 
 if TOKEN:
