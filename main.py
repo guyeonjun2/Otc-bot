@@ -62,46 +62,64 @@ def embed_create(premium, rate, arrow_mark):
     e.add_field(name="💰 재고", value="0원", inline=False)
     e.add_field(name="📊 김프", value=f"{premium}% {arrow_mark}", inline=False)
     e.add_field(name="💵 환율", value=f"{rate}원", inline=False)
-    e.add_field(name="🕒 마지막 갱신", value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"), inline=False)
+    e.add_field(name="🕒 마지막 갱신",
+                value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"),
+                inline=False)
     return e
 
-# ================= 인증 모달 =================
-class VerifyModal(Modal):
-    def __init__(self, carrier):
-        super().__init__(title="본인인증")
-        self.carrier = carrier
-        self.name = TextInput(label="이름")
-        self.phone = TextInput(label="전화번호")
-        self.jumin = TextInput(label="주민등록번호 앞 6자리")
-        self.bank = TextInput(label="은행명")
-        self.account = TextInput(label="계좌번호")
+# ================= 충전 기능 추가 =================
+charge_counter = 1
 
-        self.add_item(self.name)
-        self.add_item(self.phone)
-        self.add_item(self.jumin)
-        self.add_item(self.bank)
-        self.add_item(self.account)
+class ChargeModal(Modal, title="충전"):
+    def __init__(self, user_id):
+        super().__init__()
+        self.user_id = user_id
+        self.amount = TextInput(label="금액 (숫자만 입력)")
+        self.add_item(self.amount)
 
     async def on_submit(self, interaction: discord.Interaction):
-        channel = await bot.fetch_channel(ADMIN_CHANNEL_ID)
+        global charge_counter
 
-        embed = discord.Embed(title="인증 요청")
-        embed.add_field(name="유저", value=interaction.user.mention, inline=False)
-        embed.add_field(name="통신사", value=self.carrier, inline=False)
-        embed.add_field(name="이름", value=self.name.value, inline=False)
-        embed.add_field(name="전화번호", value=self.phone.value, inline=False)
-        embed.add_field(name="주민번호6자리", value=self.jumin.value, inline=False)
-        embed.add_field(name="은행명", value=self.bank.value, inline=False)
-        embed.add_field(name="계좌번호", value=self.account.value, inline=False)
+        if not self.amount.value.isdigit():
+            await interaction.response.send_message("숫자만 입력", ephemeral=True)
+            return
 
-        await channel.send(embed=embed, view=AdminVerifyView(interaction.user, self.name.value))
-        await interaction.response.send_message("인증요청이 전송되었습니다.", ephemeral=True)
+        cursor.execute("SELECT name FROM users WHERE user_id=?", (self.user_id,))
+        data = cursor.fetchone()
 
-class AdminVerifyView(View):
-    def __init__(self, user, name):
+        if not data:
+            await interaction.response.send_message("본인인증 후 사용 가능합니다.", ephemeral=True)
+            return
+
+        name = data[0]
+        amount = int(self.amount.value)
+
+        guild = interaction.guild
+        owner = await guild.fetch_member(OWNER_ID)
+
+        channel_name = f"충전접수-{charge_counter:04d}"
+        charge_counter += 1
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True),
+            owner: discord.PermissionOverwrite(view_channel=True)
+        }
+
+        channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
+
+        embed = discord.Embed(title="충전 요청")
+        embed.add_field(name="신청자", value=interaction.user.mention, inline=False)
+        embed.add_field(name="입금자명", value=name, inline=False)
+        embed.add_field(name="금액", value=f"{amount}원", inline=False)
+
+        await channel.send(embed=embed, view=ChargeAdminView(interaction.user))
+        await interaction.response.send_message("충전요청이 접수되었습니다.", ephemeral=True)
+
+class ChargeAdminView(View):
+    def __init__(self, user):
         super().__init__(timeout=None)
         self.user = user
-        self.name = name
 
     @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: Button):
@@ -109,12 +127,14 @@ class AdminVerifyView(View):
             await interaction.response.send_message("관리자만 가능합니다.", ephemeral=True)
             return
 
-        cursor.execute("INSERT OR REPLACE INTO users(user_id,name,verified) VALUES(?,?,1)",
-                       (self.user.id, self.name))
-        conn.commit()
+        await self.user.send("승인")
+        await interaction.response.send_message("5초 후 삭제", ephemeral=True)
+        await interaction.channel.send("5초 후 삭제")
 
-        await self.user.send("인증 승인")
-        await interaction.response.send_message("승인 완료", ephemeral=True)
+        await discord.utils.sleep_until(
+            discord.utils.utcnow() + timedelta(seconds=5)
+        )
+        await interaction.channel.delete()
 
     @discord.ui.button(label="거부", style=discord.ButtonStyle.danger)
     async def reject(self, interaction: discord.Interaction, button: Button):
@@ -122,84 +142,41 @@ class AdminVerifyView(View):
             await interaction.response.send_message("관리자만 가능합니다.", ephemeral=True)
             return
 
-        await self.user.send("인증 거부")
-        await interaction.response.send_message("거부 완료", ephemeral=True)
+        await self.user.send("거부")
+        await interaction.response.send_message("5초 후 삭제", ephemeral=True)
+        await interaction.channel.send("5초 후 삭제")
 
-# ================= 통신사 선택 =================
-class CarrierSelect(Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="SKT"),
-            discord.SelectOption(label="KT"),
-            discord.SelectOption(label="LGU+"),
-            discord.SelectOption(label="알뜰폰")
-        ]
-        super().__init__(placeholder="통신사 선택", options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        if self.values[0] == "알뜰폰":
-            await interaction.response.send_message(view=AltCarrierView(), ephemeral=True)
-        else:
-            await interaction.response.send_modal(VerifyModal(self.values[0]))
-
-class AltCarrierSelect(Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="알뜰폰 SKT"),
-            discord.SelectOption(label="알뜰폰 KT"),
-            discord.SelectOption(label="알뜰폰 LGU+"),
-        ]
-        super().__init__(placeholder="알뜰폰 선택", options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(VerifyModal(self.values[0]))
-
-class CarrierView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(CarrierSelect())
-
-class AltCarrierView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(AltCarrierSelect())
+        await discord.utils.sleep_until(
+            discord.utils.utcnow() + timedelta(seconds=5)
+        )
+        await interaction.channel.delete()
 
 # ================= 메인 패널 =================
 class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    async def require_verify(self, interaction):
-        if not is_verified(interaction.user.id):
-            await interaction.response.send_message(view=CarrierView(), ephemeral=True)
-            return False
-        return True
-
     @discord.ui.button(label="💳 충전")
     async def charge(self, interaction: discord.Interaction, button: Button):
-        if not await self.require_verify(interaction):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_message("본인인증 후 사용 가능합니다.", ephemeral=True)
             return
-        await interaction.response.send_message("충전", ephemeral=True)
+
+        await interaction.response.send_modal(ChargeModal(interaction.user.id))
 
     @discord.ui.button(label="📊 계산")
     async def calc(self, interaction: discord.Interaction, button: Button):
-        if not await self.require_verify(interaction):
-            return
         await interaction.response.send_message("계산", ephemeral=True)
 
     @discord.ui.button(label="💸 송금")
     async def send(self, interaction: discord.Interaction, button: Button):
-        if not await self.require_verify(interaction):
-            return
         await interaction.response.send_message("송금", ephemeral=True)
 
     @discord.ui.button(label="📌 정보")
     async def info(self, interaction: discord.Interaction, button: Button):
-        if not await self.require_verify(interaction):
-            return
         await interaction.response.send_message("정보", ephemeral=True)
 
-# ================= 패널 갱신 =================
+# ================= 패널 자동 갱신 =================
 @tasks.loop(seconds=30)
 async def update_panel():
     global previous_premium
@@ -212,6 +189,7 @@ async def update_panel():
 async def on_ready():
     global panel_message, previous_premium
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
+
     premium, rate = get_kimchi()
     previous_premium = premium
 
