@@ -23,7 +23,7 @@ RANKS = {
 stock_amount = "현재 자판기 미완성"
 current_k_premium = "데이터 수집 중..."
 last_update_time = "대기 중"
-last_otc_message = None  # 가장 최근에 보낸 /otc 메시지를 저장할 변수
+last_otc_message = None 
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -33,6 +33,7 @@ def get_kst_now():
     return datetime.utcnow() + timedelta(hours=9)
 
 # ====== [2. 뷰 클래스] ======
+
 class ApproveView(View):
     def __init__(self, user_id, amount, bot):
         super().__init__(timeout=None)
@@ -55,14 +56,21 @@ class ApproveView(View):
             
             member = interaction.guild.get_member(self.user_id)
             if member:
-                # update_member_rank 함수는 별도로 정의하거나 클래스 메서드로 포함
                 await update_member_rank(member, user_data['total_spent'])
-                try: await member.send(f"💰 **{self.amount:,.0f}원** 충전 완료!")
+                try: await member.send(f"💰 신청하신 **{self.amount:,.0f}원** 충전이 완료되었습니다.")
                 except: pass
-            await interaction.followup.send("승인 완료", ephemeral=True)
+            await interaction.followup.send("✅ 승인 완료", ephemeral=True)
             await interaction.message.delete()
         except Exception as e:
-            await interaction.followup.send(f"오류: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ 오류: {e}", ephemeral=True)
+
+    @discord.ui.button(label="❌ 거절", style=discord.ButtonStyle.red)
+    async def reject(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer(ephemeral=True)
+        async with self.bot.db.acquire() as conn:
+            await conn.execute("UPDATE deposit_requests SET status='rejected' WHERE user_id=$1 AND amount=$2::numeric", self.user_id, self.amount)
+        await interaction.followup.send("❌ 거절 완료", ephemeral=True)
+        await interaction.message.delete()
 
 class OTCView(View):
     def __init__(self, bot):
@@ -76,14 +84,19 @@ class OTCView(View):
         modal.add_item(amt_input)
         async def on_modal_submit(intact: discord.Interaction):
             await intact.response.defer(ephemeral=True)
-            if not amt_input.value.isdigit(): return await intact.followup.send("숫자만 입력!", ephemeral=True)
+            if not amt_input.value.isdigit(): return await intact.followup.send("숫자만 입력하세요!", ephemeral=True)
             async with self.bot.db.acquire() as conn:
                 await conn.execute("INSERT INTO deposit_requests (user_id, amount) VALUES ($1, $2::numeric)", intact.user.id, int(amt_input.value))
-            await intact.followup.send("✅ 신청 완료!", ephemeral=True)
+            await intact.followup.send("✅ 신청 완료! 관리자 확인을 기다려주세요.", ephemeral=True)
             log_ch = self.bot.get_channel(LOG_CHANNEL_ID)
-            if log_ch: await log_ch.send(f"🔔 요청: <@{intact.user.id}> {int(amt_input.value):,}원", view=ApproveView(intact.user.id, int(amt_input.value), self.bot))
+            if log_ch: await log_ch.send(f"🔔 **충전 요청**: <@{intact.user.id}>님이 {int(amt_input.value):,}원 요청", view=ApproveView(intact.user.id, int(amt_input.value), self.bot))
         modal.on_submit = on_modal_submit
         await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
+    async def send(self, interaction: discord.Interaction, button: Button):
+        # 현재는 기능이 없으므로 안내 메시지만 출력
+        await interaction.response.send_message("📤 송금 기능은 현재 준비 중입니다.", ephemeral=True)
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: Button):
@@ -92,19 +105,41 @@ class OTCView(View):
             user = await conn.fetchrow("SELECT balance, total_spent FROM users WHERE user_id = $1", interaction.user.id)
         bal = user['balance'] if user else 0
         spent = user['total_spent'] if user else 0
+        current_rank = "아이언"
+        for amount, role_id in sorted(RANKS.items(), reverse=True):
+            if spent >= amount:
+                role = interaction.guild.get_role(role_id)
+                current_rank = role.name if role else "등급 정보 없음"
+                break
         embed = discord.Embed(title=f"👤 {interaction.user.display_name} 정보", color=discord.Color.blue())
-        embed.add_field(name="💰 잔액", value=f"{bal:,.0f}원")
+        embed.add_field(name="🏆 현재 등급", value=f"**{current_rank}**", inline=True)
+        embed.add_field(name="💰 보유 잔액", value=f"**{bal:,.0f}원**", inline=True)
+        embed.add_field(name="📈 누적 이용액", value=f"**{spent:,.0f}원**", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
+    async def help(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(title="❓ 도움말 및 이용방법", color=discord.Color.orange())
+        embed.add_field(name="💰 충전", value="버튼을 누르고 금액을 입력하면 관리자 승인 후 잔액이 충전됩니다.", inline=False)
+        embed.add_field(name="📊 정보", value="내 현재 등급과 보유 잔액을 확인할 수 있습니다.", inline=False)
+        embed.add_field(name="📈 김프", value="업비트와 바이낸스 간의 시세 차이를 1분마다 실시간으로 갱신합니다.", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 # ====== [3. 봇 클래스] ======
+
 class MyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
         self.db = await asyncpg.create_pool(DATABASE_URL)
+        async with self.db.acquire() as conn:
+            await conn.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance NUMERIC DEFAULT 0, total_spent NUMERIC DEFAULT 0);")
+            await conn.execute("CREATE TABLE IF NOT EXISTS deposit_requests (id SERIAL PRIMARY KEY, user_id BIGINT, amount NUMERIC, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW());")
+        
         await self.tree.sync()
-        self.update_premium_loop.start()
+        if not self.update_premium_loop.is_running():
+            self.update_premium_loop.start() 
         print("✅ 시스템 가동 및 자동 갱신 시작")
 
     @tasks.loop(minutes=1.0)
@@ -123,7 +158,7 @@ class MyBot(commands.Bot):
             current_k_premium = f"{premium:.2f}%"
             last_update_time = get_kst_now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # [핵심] 기존에 보낸 메시지가 있다면 자동으로 수정
+            # 메시지 자동 수정 로직
             if last_otc_message:
                 try:
                     new_embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
@@ -131,9 +166,11 @@ class MyBot(commands.Bot):
                     new_embed.add_field(name="📈 김프", value=f"```{current_k_premium}```", inline=False)
                     new_embed.add_field(name="🕒 갱신 (KST)", value=f"```{last_update_time}```", inline=False)
                     new_embed.set_footer(text="신속한 대행 | 레제 코인대행")
-                    await last_otc_message.edit(embed=new_embed)
-                except: last_otc_message = None # 메시지가 삭제된 경우 대비
-        except Exception as e: print(f"갱신 에러: {e}")
+                    await last_otc_message.edit(embed=new_embed, view=OTCView(self))
+                except:
+                    last_otc_message = None
+        except Exception as e:
+            print(f"⚠️ 갱신 실패: {e}")
 
 bot = MyBot()
 
@@ -143,10 +180,12 @@ async def update_member_rank(member, total_spent):
         if total_spent >= amount:
             target_role_id = role_id
             break
-    roles_to_remove = [discord.Object(id=rid) for rid in RANKS.values() if rid != target_role_id]
+    all_rank_ids = list(RANKS.values())
+    roles_to_remove = [discord.Object(id=rid) for rid in all_rank_ids if rid != target_role_id and any(r.id == rid for r in member.roles)]
     try:
-        await member.remove_roles(*roles_to_remove)
-        await member.add_roles(discord.Object(id=target_role_id))
+        if roles_to_remove: await member.remove_roles(*roles_to_remove)
+        target_role = member.guild.get_role(target_role_id)
+        if target_role: await member.add_roles(target_role)
     except: pass
 
 @bot.tree.command(name="otc", description="메뉴 호출")
@@ -160,6 +199,7 @@ async def otc_slash(interaction: discord.Interaction):
     embed.set_footer(text="신속한 대행 | 레제 코인대행")
     
     msg = await interaction.followup.send(embed=embed, view=OTCView(bot))
-    last_otc_message = msg # 최근 메시지로 등록
+    last_otc_message = msg
 
-if TOKEN: bot.run(TOKEN)
+if TOKEN:
+    bot.run(TOKEN)
