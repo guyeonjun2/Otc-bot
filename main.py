@@ -35,8 +35,12 @@ CREATE TABLE IF NOT EXISTS charges (
     amount INTEGER
 )
 """)
-
 conn.commit()
+
+def is_verified(user_id):
+    cursor.execute("SELECT verified FROM users WHERE user_id=?", (user_id,))
+    data = cursor.fetchone()
+    return data and data[0] == 1
 
 # ================= 김프 =================
 previous_premium = None
@@ -61,14 +65,14 @@ def arrow(cur, prev):
     return "➖"
 
 def embed_create(premium, rate, arrow_mark):
-    e = discord.Embed(title="🪙 코인대행 자판기", color=0x5865F2)
+    e = discord.Embed(title="🪙 레제 코인대행", color=0x5865F2)
     e.add_field(name="💰 재고", value="0원", inline=False)
     e.add_field(name="📊 김프", value=f"{premium}% {arrow_mark}", inline=False)
     e.add_field(name="💵 환율", value=f"{rate}원", inline=False)
-    e.add_field(name="🕒 갱신", value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"), inline=False)
+    e.add_field(name="🕒 마지막 갱신", value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"), inline=False)
     return e
 
-# ================= 인증 =================
+# ================= 본인인증 =================
 class VerifyModal(Modal, title="본인인증"):
     name = TextInput(label="이름 입력")
 
@@ -76,32 +80,25 @@ class VerifyModal(Modal, title="본인인증"):
         cursor.execute("INSERT OR REPLACE INTO users(user_id,name,verified) VALUES(?,?,1)",
                        (interaction.user.id, self.name.value))
         conn.commit()
-        await interaction.response.send_message("✅ 본인인증 완료", ephemeral=True)
+        await interaction.response.send_message("본인인증 완료", ephemeral=True)
 
 # ================= 충전 =================
 charge_counter = 1
 
-class ChargeModal(Modal, title="충전 신청"):
+class ChargeModal(Modal, title="충전"):
     amount = TextInput(label="금액 (숫자만 입력)")
 
     async def on_submit(self, interaction: discord.Interaction):
         global charge_counter
 
         if not self.amount.value.isdigit():
-            await interaction.response.send_message("숫자만 입력하세요.", ephemeral=True)
+            await interaction.response.send_message("숫자만 입력", ephemeral=True)
             return
 
-        cursor.execute("SELECT name, verified FROM users WHERE user_id=?",
-                       (interaction.user.id,))
-        data = cursor.fetchone()
+        cursor.execute("SELECT name FROM users WHERE user_id=?", (interaction.user.id,))
+        name = cursor.fetchone()[0]
 
-        if not data or data[1] != 1:
-            await interaction.response.send_message("본인인증 후 사용 가능합니다.", ephemeral=True)
-            return
-
-        name = data[0]
         amount = int(self.amount.value)
-
         cursor.execute("INSERT INTO charges(user_id,amount) VALUES(?,?)",
                        (interaction.user.id, amount))
         conn.commit()
@@ -120,7 +117,7 @@ class ChargeModal(Modal, title="충전 신청"):
 
         channel = await guild.create_text_channel(channel_name, overwrites=overwrites)
 
-        embed = discord.Embed(title="💳 충전 요청")
+        embed = discord.Embed(title="충전 요청")
         embed.add_field(name="신청자", value=interaction.user.mention)
         embed.add_field(name="입금자명", value=name)
         embed.add_field(name="금액", value=f"{amount}원")
@@ -138,9 +135,9 @@ class ChargeAdminView(View):
         if interaction.user.id != OWNER_ID:
             await interaction.response.send_message("관리자만 가능합니다.", ephemeral=True)
             return
-        await self.user.send("✅ 충전 승인 완료")
-        await interaction.response.send_message("5초 후 채널 삭제", ephemeral=True)
-        await interaction.channel.send("승인 완료. 5초 후 삭제.")
+        await self.user.send("승인")
+        await interaction.response.send_message("5초 후 삭제", ephemeral=True)
+        await interaction.channel.send("5초 후 삭제")
         await discord.utils.sleep_until(discord.utils.utcnow() + timedelta(seconds=5))
         await interaction.channel.delete()
 
@@ -149,9 +146,9 @@ class ChargeAdminView(View):
         if interaction.user.id != OWNER_ID:
             await interaction.response.send_message("관리자만 가능합니다.", ephemeral=True)
             return
-        await self.user.send("❌ 충전 거부")
-        await interaction.response.send_message("5초 후 채널 삭제", ephemeral=True)
-        await interaction.channel.send("거부 완료. 5초 후 삭제.")
+        await self.user.send("거부")
+        await interaction.response.send_message("5초 후 삭제", ephemeral=True)
+        await interaction.channel.send("5초 후 삭제")
         await discord.utils.sleep_until(discord.utils.utcnow() + timedelta(seconds=5))
         await interaction.channel.delete()
 
@@ -170,7 +167,7 @@ class CarrierSelect(Select):
         if self.values[0] == "알뜰폰":
             await interaction.response.send_message(view=AltCarrierView(), ephemeral=True)
         else:
-            await interaction.response.send_message(f"{self.values[0]} 선택 완료", ephemeral=True)
+            await interaction.response.send_message(f"{self.values[0]}", ephemeral=True)
 
 class AltCarrierSelect(Select):
     def __init__(self):
@@ -182,7 +179,7 @@ class AltCarrierSelect(Select):
         super().__init__(placeholder="알뜰폰 선택", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_message(f"{self.values[0]} 선택 완료", ephemeral=True)
+        await interaction.response.send_message(f"{self.values[0]}", ephemeral=True)
 
 class CarrierView(View):
     def __init__(self):
@@ -199,25 +196,37 @@ class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="정보")
-    async def info(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("📌 정보 기능입니다.", ephemeral=True)
+    @discord.ui.button(label="💳 충전")
+    async def charge(self, interaction: discord.Interaction, button: Button):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
+        await interaction.response.send_modal(ChargeModal())
 
-    @discord.ui.button(label="계산")
+    @discord.ui.button(label="📊 계산")
     async def calc(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("📌 계산 기능입니다.", ephemeral=True)
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
+        await interaction.response.send_message("계산", ephemeral=True)
 
-    @discord.ui.button(label="통신사")
+    @discord.ui.button(label="💸 송금")
+    async def send(self, interaction: discord.Interaction, button: Button):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
+        await interaction.response.send_message("송금", ephemeral=True)
+
+    @discord.ui.button(label="📌 정보")
+    async def info(self, interaction: discord.Interaction, button: Button):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
+        await interaction.response.send_message("정보", ephemeral=True)
+
+    @discord.ui.button(label="📱 통신사")
     async def carrier(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message(view=CarrierView(), ephemeral=True)
-
-    @discord.ui.button(label="본인인증")
-    async def verify(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(VerifyModal())
-
-    @discord.ui.button(label="충전")
-    async def charge(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(ChargeModal())
 
 # ================= 패널 자동 갱신 =================
 @tasks.loop(seconds=30)
@@ -231,8 +240,6 @@ async def update_panel():
 @bot.event
 async def on_ready():
     global panel_message, previous_premium
-    print("봇 실행 완료")
-
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
     premium, rate = get_kimchi()
     previous_premium = premium
