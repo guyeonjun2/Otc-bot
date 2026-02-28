@@ -22,34 +22,28 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # DB 연결 풀 생성
         self.db = await asyncpg.create_pool(DATABASE_URL)
-        # 테이블 생성
         await create_tables(self.db)
-        # 명령어 동기화
         await self.tree.sync()
         print("✅ 슬래시 명령어 및 DB 동기화 완료!")
 
 bot = MyBot()
 
-# 실시간 정보 변수
+# 실시간 정보 변수 (기존 유지)
 stock_amount = "현재 자판기 미완성"
 kimchi_premium = "현재 자판기 미완성"
+last_update = "현재 자판기 미완성"
 
 # ================= DB 초기화 =================
 async def create_tables(pool):
     async with pool.acquire() as conn:
+        # 누적 금액(total_spent) 제외하고 생성
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
-            balance NUMERIC DEFAULT 0,
-            total_spent NUMERIC DEFAULT 0
+            balance NUMERIC DEFAULT 0
         );
         """)
-        try:
-            await conn.execute("ALTER TABLE users ADD COLUMN total_spent NUMERIC DEFAULT 0;")
-        except:
-            pass
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS deposit_requests (
             id SERIAL PRIMARY KEY,
@@ -75,9 +69,7 @@ class ApproveView(View):
 
     @discord.ui.button(label="✅ 승인", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
-        # 3초 제한 방지를 위해 응답 지연
         await interaction.response.defer(ephemeral=True) 
-        
         try:
             async with bot.db.acquire() as conn:
                 async with conn.transaction():
@@ -92,16 +84,16 @@ class ApproveView(View):
                         return
 
                     await conn.execute("UPDATE deposit_requests SET status='approved' WHERE id=$1", record["id"])
+                    
+                    # 잔액만 업데이트 (누적 금액 로직 삭제)
                     await conn.execute("""
-                        INSERT INTO users (user_id, balance, total_spent)
-                        VALUES ($1, $2::numeric, $2::numeric)
+                        INSERT INTO users (user_id, balance)
+                        VALUES ($1, $2::numeric)
                         ON CONFLICT (user_id)
-                        DO UPDATE SET 
-                            balance = users.balance + EXCLUDED.balance,
-                            total_spent = users.total_spent + EXCLUDED.total_spent
+                        DO UPDATE SET balance = users.balance + EXCLUDED.balance
                     """, self.user_id, self.amount)
 
-            # 유저에게 DM
+            # 유저에게 DM 발송
             target_user = await bot.fetch_user(self.user_id)
             dm_msg = ""
             if target_user:
@@ -129,7 +121,6 @@ class DepositModal(Modal, title="💰 충전 신청"):
     amount = TextInput(label="충전 금액", placeholder="숫자만 입력 (예: 10000)")
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 모달 제출 시에도 defer 사용 가능하지만, 여기서는 짧은 로직이라 바로 응답
         if not self.amount.value.isdigit():
             await interaction.response.send_message("숫자만 입력해주세요.", ephemeral=True)
             return
@@ -138,7 +129,7 @@ class DepositModal(Modal, title="💰 충전 신청"):
         async with bot.db.acquire() as conn:
             await conn.execute("INSERT INTO deposit_requests (user_id, amount) VALUES ($1, $2)", interaction.user.id, amount)
 
-        await interaction.response.send_message(f"✅ {amount:,.0f}원 충전 신청 완료!\n관리자 확인 후 DM으로 알려드립니다.", ephemeral=True)
+        await interaction.response.send_message(f"✅ {amount:,.0f}원 충전 신청 완료!", ephemeral=True)
 
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         if log_channel:
@@ -156,42 +147,42 @@ class OTCView(View):
     async def charge(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(DepositModal())
 
-    @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
-    async def info(self, interaction: discord.Interaction, button: Button):
-        # 정보 확인 시에도 딜레이 방지를 위해 defer 사용
-        await interaction.response.defer(ephemeral=True)
-        
-        async with bot.db.acquire() as conn:
-            user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", interaction.user.id)
-            if not user:
-                await conn.execute("INSERT INTO users (user_id, balance, total_spent) VALUES ($1, 0, 0)", interaction.user.id)
-                balance, total_spent = 0, 0
-            else:
-                balance = user.get('balance', 0)
-                total_spent = user.get('total_spent', 0)
-
-        embed = discord.Embed(title=f"👤 {interaction.user.display_name}님의 정보", color=discord.Color.blue())
-        embed.add_field(name="💰 현재 잔액", value=f"**{balance:,.0f}원**", inline=False)
-        embed.add_field(name="📊 누적 이용액", value=f"**{total_spent:,.0f}원**", inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("📤 송금 기능 준비 중입니다.", ephemeral=True)
 
+    @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
+    async def info(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer(ephemeral=True)
+        async with bot.db.acquire() as conn:
+            user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", interaction.user.id)
+            if not user:
+                await conn.execute("INSERT INTO users (user_id, balance) VALUES ($1, 0)", interaction.user.id)
+                balance = 0
+            else:
+                balance = user.get('balance', 0)
+
+        embed = discord.Embed(title=f"👤 {interaction.user.display_name}님의 정보", color=discord.Color.blue())
+        embed.add_field(name="💰 현재 잔액", value=f"**{balance:,.0f}원**", inline=False)
+        # 누적 이용금액 필드 삭제 완료
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🧮 계산기", style=discord.ButtonStyle.secondary)
+    async def calc(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("🧮 계산기 기능은 업데이트 예정입니다.", ephemeral=True)
+
+    @discord.ui.button(label="❓ 도움말", style=discord.ButtonStyle.secondary)
+    async def help(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("❓ 도움말: 충전 후 입금하시면 관리자가 승인해드립니다.", ephemeral=True)
+
 # ================= 슬래시 명령어 =================
 @bot.tree.command(name="otc", description="레제 코인대행 메뉴를 호출합니다.")
 async def otc_slash(interaction: discord.Interaction):
-    # 슬래시 명령어 호출 시 즉시 응답을 지연시켜 "응답하지 않습니다" 방지
-    # 단, 메뉴 임베드를 바로 보내야 하므로 여기서는 defer 없이 즉시 전송을 시도합니다.
-    # 만약 여기서도 에러가 나면 DB 연결 상태를 확인해야 합니다.
-    try:
-        embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
-        embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
-        embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
-        await interaction.response.send_message(embed=embed, view=OTCView())
-    except Exception as e:
-        print(f"명령어 실행 에러: {e}")
+    embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
+    embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
+    embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
+    embed.add_field(name="🕒 마지막 갱신", value=last_update, inline=False) # 마지막 갱신 복구
+    await interaction.response.send_message(embed=embed, view=OTCView())
 
 if TOKEN:
     bot.run(TOKEN)
