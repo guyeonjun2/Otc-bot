@@ -7,9 +7,9 @@ import asyncpg
 
 # ====== 환경변수 ======
 TOKEN = os.getenv("TOKEN")
-DATABASE_URL = os.getenv("postgresql://postgres:ftdLqBhVQzpuEqKhtwUILzuOepuOoMGG@centerbeam.proxy.rlwy.net:30872/railway")
-ADMIN_USER_ID = int(os.getenv("1472930278874939445"))
-LOG_CHANNEL_ID = int(os.getenv("1476976182523068478"))
+DATABASE_URL = "postgresql://postgres:ftdLqBhVQzpuEqKhtwUILzuOepuOoMGG@centerbeam.proxy.rlwy.net:30872/railway"
+ADMIN_USER_ID = 1472930278874939445
+LOG_CHANNEL_ID = 1476976182523068478
 
 # ====== 허용 서버 ID 리스트 ======
 ALLOWED_GUILD_IDS = [1476576109436076085, 1476258189740867728]
