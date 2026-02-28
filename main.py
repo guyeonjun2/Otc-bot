@@ -1,6 +1,7 @@
 import os
 import discord
 import requests
+from datetime import datetime, timedelta
 from discord.ext import commands, tasks
 from discord.ui import View
 
@@ -10,8 +11,8 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 panel_message = None
-previous_premium = None  # 🔥 이전 김프 저장용
-BANNER_URL = "https://cdn.discordapp.com/attachments/1476942061747044463/1477299593598468309/REZE_COIN_OTC.gif?ex=69a441f6&is=69a2f076&hm=ffa3babff8587f9ebae5a7241dae6f83f25257b4cbb4588908859c01249bd678&"
+previous_premium = None
+BANNER_URL = "https://cdn.discordapp.com/attachments/1476942061747044463/1477299593598468309/REZE_COIN_OTC.gif?ex=69a441f6&is=69a2f076&hm=ffa3babff8587f9ebae5a7241dae6f83f25257b4cbb4588908859c01249bd678&"  # 🔥 배너 링크 넣기
 
 
 # ===== 환율 =====
@@ -28,7 +29,7 @@ def get_upbit_usdt_price():
     return float(data[0]["trade_price"])
 
 
-# ===== 김프 계산 =====
+# ===== 김프 계산 (USDT 기준) =====
 def calculate_kimchi_premium():
     rate = get_exchange_rate()
     upbit_price = get_upbit_usdt_price()
@@ -37,7 +38,7 @@ def calculate_kimchi_premium():
     return round(premium, 2), round(rate, 2)
 
 
-# ===== 방향 화살표 계산 =====
+# ===== 방향 화살표 =====
 def get_arrow(current, previous):
     if previous is None:
         return "➖"
@@ -47,6 +48,13 @@ def get_arrow(current, previous):
         return "▼"
     else:
         return "➖"
+
+
+# ===== 한국 시간 =====
+def get_kst_time():
+    utc_now = datetime.utcnow()
+    kst = utc_now + timedelta(hours=9)
+    return kst.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class PanelView(View):
@@ -78,19 +86,28 @@ def create_embed(premium, rate, arrow):
     )
 
     embed.add_field(name="💰 재고", value="0원", inline=False)
+
     embed.add_field(
         name="📊 김프 (USDT 기준)",
         value=f"{premium}% {arrow}",
         inline=False
     )
+
     embed.add_field(name="💵 환율", value=f"{rate}원", inline=False)
+
+    embed.add_field(
+        name="🕒 마지막 갱신",
+        value=get_kst_time(),
+        inline=False
+    )
 
     embed.set_image(url=BANNER_URL)
 
     return embed
 
 
-@tasks.loop(seconds=60)
+# 🔥 30초마다 자동 갱신
+@tasks.loop(seconds=30)
 async def update_panel():
     global panel_message, previous_premium
 
