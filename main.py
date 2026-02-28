@@ -1,12 +1,12 @@
 import discord
 from discord.ext import commands, tasks
-from discord.ui import View, Button, Modal, TextInput
+from discord.ui import View, Button, Modal, TextInput, Select
 import os
 import asyncpg
 import aiohttp
 from datetime import datetime, timedelta
 
-# ====== [1. 설정 및 ID] ======
+# ====== [1. 기본 설정 및 ID] ======
 TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_USER_ID = 1472930278874939445
@@ -19,7 +19,7 @@ RANKS = {
     100000: 1476788291448865019, 0: 1476788194346274936         
 }
 
-# 전역 변수
+# 전역 변수 (김프 및 자판기 상태)
 stock_amount = "현재 자판기 미완성"
 current_k_premium = "데이터 수집 중..."
 last_update_time = "대기 중"
@@ -32,8 +32,103 @@ intents.members = True
 def get_kst_now():
     return datetime.utcnow() + timedelta(hours=9)
 
-# ====== [2. 뷰 클래스] ======
+# ====== [2. 본인인증 시스템 (UI & 로직)] ======
+class AdminVerifyApproveView(View):
+    def __init__(self, target_user_id, bot):
+        super().__init__(timeout=None)
+        self.target_user_id = target_user_id
+        self.bot = bot
 
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.green)
+    async def approve(self, interaction: discord.Interaction, button: Button):
+        async with self.bot.db.acquire() as conn:
+            # 유저 정보가 없으면 만들고, 있으면 인증 상태만 True로 업데이트
+            await conn.execute("""
+                INSERT INTO users (user_id, is_verified) VALUES ($1, TRUE)
+                ON CONFLICT (user_id) DO UPDATE SET is_verified = TRUE
+            """, self.target_user_id)
+        
+        member = interaction.guild.get_member(self.target_user_id)
+        if member:
+            try: await member.send("🎊 본인인증이 완료되었습니다! 이제 `/otc` 명령어를 쳐서 메뉴를 이용하실 수 있습니다.")
+            except: pass
+        await interaction.response.send_message("인증 승인이 완료되었습니다.", ephemeral=True)
+        await interaction.message.delete()
+
+class UserDetailModal(Modal):
+    def __init__(self, bot, carrier):
+        super().__init__(title=f"{carrier} 본인확인 정보 입력")
+        self.bot = bot
+        
+        self.u_name = TextInput(label="이름", placeholder="실명 입력 (예: 홍길동)", min_length=2, max_length=5)
+        self.u_birth = TextInput(label="주민등록번호 앞자리 + 성별", placeholder="예: 990101-1", min_length=8, max_length=8)
+        self.u_phone = TextInput(label="전화번호", placeholder="'-' 제외 숫자만 입력", min_length=10, max_length=11)
+        self.u_bank = TextInput(label="은행명", placeholder="예: 카카오뱅크")
+        self.u_account = TextInput(label="계좌번호", placeholder="'-' 제외 숫자만 입력")
+
+        self.add_item(self.u_name)
+        self.add_item(self.u_birth)
+        self.add_item(self.u_phone)
+        self.add_item(self.u_bank)
+        self.add_item(self.u_account)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        name = self.u_name.value
+        masked_name = name[0] + "x" + name[-1] if len(name) > 2 else name[0] + "x"
+        
+        log_ch = self.bot.get_channel(LOG_CHANNEL_ID)
+        if log_ch:
+            embed = discord.Embed(title="🛡️ 본인인증 승인 요청", color=discord.Color.blue())
+            embed.add_field(name="유저", value=interaction.user.mention)
+            embed.add_field(name="확인용 성함", value=f"**{masked_name}**", inline=True)
+            embed.add_field(name="전화번호", value=f"**{self.u_phone.value}**", inline=True)
+            embed.add_field(name="생년월일/성별", value=self.u_birth.value, inline=True)
+            embed.add_field(name="계좌 정보", value=f"{self.u_bank.value} / {self.u_account.value}", inline=False)
+            embed.set_footer(text="입금자명과 대조하여 승인 여부를 결정하세요.")
+            await log_ch.send(embed=embed, view=AdminVerifyApproveView(interaction.user.id, self.bot))
+        
+        await interaction.followup.send("✅ 인증 신청이 정상적으로 접수되었습니다.\n관리자가 정보 대조 후 승인해 드립니다.", ephemeral=True)
+
+class CarrierSelectView(View):
+    def __init__(self, bot):
+        super().__init__(timeout=60)
+        self.bot = bot
+        options = [
+            discord.SelectOption(label="SKT 알뜰폰", value="SKT_MVNO"),
+            discord.SelectOption(label="KT 알뜰폰", value="KT_MVNO"),
+            discord.SelectOption(label="LGU+ 알뜰폰", value="LGU_MVNO"),
+        ]
+        self.select = Select(placeholder="알뜰폰 통신사를 선택하세요", options=options)
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(UserDetailModal(self.bot, self.select.values[0]))
+
+class MainCarrierView(View):
+    def __init__(self, bot):
+        super().__init__(timeout=60)
+        self.bot = bot
+
+    @discord.ui.button(label="SKT", style=discord.ButtonStyle.secondary)
+    async def skt(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(UserDetailModal(self.bot, "SKT"))
+
+    @discord.ui.button(label="KT", style=discord.ButtonStyle.secondary)
+    async def kt(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(UserDetailModal(self.bot, "KT"))
+
+    @discord.ui.button(label="LGU+", style=discord.ButtonStyle.secondary)
+    async def lgu(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(UserDetailModal(self.bot, "LGU+"))
+
+    @discord.ui.button(label="알뜰폰", style=discord.ButtonStyle.primary)
+    async def mvno(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.edit_message(content="**알뜰폰 세부 통신사를 선택해주세요.**", view=CarrierSelectView(self.bot))
+
+# ====== [3. 자판기 메인 기능 (충전/송금/정보)] ======
 class ApproveView(View):
     def __init__(self, user_id, amount, bot):
         super().__init__(timeout=None)
@@ -95,7 +190,7 @@ class OTCView(View):
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("📤 송금 기능은 현재 준비 중입니다.", ephemeral=True)
+        await interaction.response.send_message("📤 코인 자동 송금 기능은 현재 준비 중입니다.", ephemeral=True)
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: Button):
@@ -120,18 +215,34 @@ class OTCView(View):
     async def help(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="❓ 도움말 및 이용방법", color=discord.Color.orange())
         embed.add_field(name="💰 충전", value="버튼을 누르고 금액을 입력하면 관리자 승인 후 잔액이 충전됩니다.", inline=False)
-        embed.add_field(name="📤 송금", value="자신의 잔액을 타인에게 보낼 수 있는 기능입니다. (현재 준비 중)", inline=False)
+        embed.add_field(name="📤 송금", value="자신의 잔액을 타인 혹은 지갑으로 송금할 수 있는 기능입니다. (준비 중)", inline=False)
         embed.add_field(name="📈 김프", value="업비트와 바이낸스 간의 시세 차이를 1분마다 실시간으로 갱신합니다.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ====== [3. 봇 클래스 및 메인 로직] ======
-
+# ====== [4. 봇 메인 클래스 및 실행] ======
 class MyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
         self.db = await asyncpg.create_pool(DATABASE_URL)
+        async with self.db.acquire() as conn:
+            # 본인인증 여부를 저장하는 is_verified 컬럼 추가 완료
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY, 
+                    balance NUMERIC DEFAULT 0, 
+                    total_spent NUMERIC DEFAULT 0,
+                    is_verified BOOLEAN DEFAULT FALSE
+                );
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS deposit_requests (
+                    id SERIAL PRIMARY KEY, user_id BIGINT, amount NUMERIC, 
+                    status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+        
         await self.tree.sync()
         if not self.update_premium_loop.is_running():
             self.update_premium_loop.start() 
@@ -164,7 +275,7 @@ class MyBot(commands.Bot):
                 except:
                     last_otc_message = None
         except Exception as e:
-            print(f"⚠️ 갱신 실패: {e}")
+            pass # 불필요한 에러 출력 방지
 
 bot = MyBot()
 
@@ -185,6 +296,22 @@ async def update_member_rank(member, total_spent):
 @bot.tree.command(name="otc", description="메뉴 호출")
 async def otc_slash(interaction: discord.Interaction):
     global last_otc_message
+    
+    # [인증 여부 검사 로직]
+    async with bot.db.acquire() as conn:
+        user = await conn.fetchrow("SELECT is_verified FROM users WHERE user_id = $1", interaction.user.id)
+    
+    # DB에 없거나 is_verified가 False면 인증 절차로 보냄
+    if not user or not user['is_verified']:
+        embed = discord.Embed(
+            title="🔒 본인인증 필요", 
+            description="서비스 이용을 위해 본인 소유의 통신사를 선택하고 인증을 진행해주세요.", 
+            color=discord.Color.red()
+        )
+        # 모달창을 띄워야 하므로 defer 없이 바로 send_message 합니다.
+        return await interaction.response.send_message(embed=embed, view=MainCarrierView(bot), ephemeral=True)
+
+    # [인증 완료된 유저만 아래 메인 메뉴 접근 가능]
     await interaction.response.defer()
     embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
     embed.add_field(name="💰 재고", value=f"```{stock_amount}```", inline=False)
