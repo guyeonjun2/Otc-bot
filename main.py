@@ -4,11 +4,10 @@ import sqlite3
 import requests
 from datetime import datetime, timedelta
 from discord.ext import commands, tasks
-from discord.ui import View, Button, Modal, TextInput, Select
+from discord.ui import View, Button, Modal, TextInput
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 PANEL_CHANNEL_ID = 1476976182523068478
-ADMIN_CHANNEL_ID = 1476976182523068478
 OWNER_ID = 1472930278874939445
 
 intents = discord.Intents.default()
@@ -67,7 +66,19 @@ def embed_create(premium, rate, arrow_mark):
                 inline=False)
     return e
 
-# ================= 충전 기능 추가 =================
+# ================= 본인인증 =================
+class VerifyModal(Modal, title="본인인증"):
+    name = TextInput(label="이름 입력")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        cursor.execute(
+            "INSERT OR REPLACE INTO users(user_id, name, verified) VALUES(?, ?, 1)",
+            (interaction.user.id, self.name.value)
+        )
+        conn.commit()
+        await interaction.response.send_message("본인인증 완료", ephemeral=True)
+
+# ================= 충전 =================
 charge_counter = 1
 
 class ChargeModal(Modal, title="충전"):
@@ -151,7 +162,7 @@ class ChargeAdminView(View):
         )
         await interaction.channel.delete()
 
-# ================= 메인 패널 =================
+# ================= 패널 =================
 class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -159,24 +170,36 @@ class PanelView(View):
     @discord.ui.button(label="💳 충전")
     async def charge(self, interaction: discord.Interaction, button: Button):
         if not is_verified(interaction.user.id):
-            await interaction.response.send_message("본인인증 후 사용 가능합니다.", ephemeral=True)
+            await interaction.response.send_modal(VerifyModal())
             return
-
         await interaction.response.send_modal(ChargeModal(interaction.user.id))
-
-    @discord.ui.button(label="📊 계산")
-    async def calc(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("계산", ephemeral=True)
 
     @discord.ui.button(label="💸 송금")
     async def send(self, interaction: discord.Interaction, button: Button):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
         await interaction.response.send_message("송금", ephemeral=True)
+
+    @discord.ui.button(label="📊 계산")
+    async def calc(self, interaction: discord.Interaction, button: Button):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
+        await interaction.response.send_message("계산", ephemeral=True)
 
     @discord.ui.button(label="📌 정보")
     async def info(self, interaction: discord.Interaction, button: Button):
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_modal(VerifyModal())
+            return
         await interaction.response.send_message("정보", ephemeral=True)
 
-# ================= 패널 자동 갱신 =================
+    @discord.ui.button(label="🪪 본인인증")
+    async def verify(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(VerifyModal())
+
+# ================= 자동 갱신 =================
 @tasks.loop(seconds=30)
 async def update_panel():
     global previous_premium
