@@ -40,6 +40,42 @@ def is_verified(user_id):
     data = cursor.fetchone()
     return data and data[0] == 1
 
+# ================= 김프 =================
+previous_premium = None
+panel_message = None
+
+def get_rate():
+    return float(requests.get("https://open.er-api.com/v6/latest/USD").json()["rates"]["KRW"])
+
+def get_usdt():
+    return float(requests.get("https://api.upbit.com/v1/ticker?markets=KRW-USDT").json()[0]["trade_price"])
+
+def get_kimchi():
+    rate = get_rate()
+    price = get_usdt()
+    premium = round(((price / rate) - 1) * 100, 2)
+    return premium, rate
+
+def arrow(cur, prev):
+    if prev is None: return "➖"
+    if cur > prev: return "▲"
+    if cur < prev: return "▼"
+    return "➖"
+
+def embed_create(premium, rate, arrow_mark):
+    e = discord.Embed(title="🪙 레제 코인대행", color=0x5865F2)
+    e.add_field(name="💰 재고", value="0원", inline=False)
+    e.add_field(name="📊 김프", value=f"{premium}% {arrow_mark}", inline=False)
+    e.add_field(name="💵 환율", value=f"{rate}원", inline=False)
+    e.add_field(name="🕒 마지막 갱신",
+                value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"),
+                inline=False)
+    )
+
+    e.set_image(url="https://cdn.discordapp.com/attachments/1476942061747044463/1477299593598468309/REZE_COIN_OTC.gif?ex=69a441f6&is=69a2f076&hm=ffa3babff8587f9ebae5a7241dae6f83f25257b4cbb4588908859c01249bd678&")
+    
+    return e
+
 # ================= 충전 =================
 charge_counter = 1
 
@@ -58,7 +94,6 @@ class ChargeModal(Modal, title="충전"):
             return
 
         amount = int(self.amount.value)
-
         guild = interaction.guild
         owner = await guild.fetch_member(OWNER_ID)
 
@@ -90,7 +125,6 @@ class ChargeAdminView(View):
         if interaction.user.id != OWNER_ID:
             await interaction.response.send_message("관리자만 가능합니다.", ephemeral=True)
             return
-
         await self.user.send("승인")
         await interaction.channel.delete()
 
@@ -99,7 +133,6 @@ class ChargeAdminView(View):
         if interaction.user.id != OWNER_ID:
             await interaction.response.send_message("관리자만 가능합니다.", ephemeral=True)
             return
-
         await self.user.send("거부")
         await interaction.channel.delete()
 
@@ -135,13 +168,9 @@ class VerifyModal(Modal, title="본인인증 정보 입력"):
         embed.add_field(name="계좌번호", value=self.account.value, inline=False)
 
         await admin_channel.send(embed=embed, view=VerifyAdminView(
-            self.user_id,
-            self.name.value,
-            self.phone.value,
-            self.rrn.value,
-            self.bank.value,
-            self.account.value,
-            self.carrier
+            self.user_id, self.name.value, self.phone.value,
+            self.rrn.value, self.bank.value,
+            self.account.value, self.carrier
         ))
 
         await interaction.response.send_message("인증 요청이 전송되었습니다.", ephemeral=True)
@@ -167,8 +196,9 @@ class VerifyAdminView(View):
         INSERT OR REPLACE INTO users 
         (user_id, name, phone, rrn, bank, account, carrier, verified)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-        """, (self.user_id, self.name, self.phone, self.rrn,
-              self.bank, self.account, self.carrier))
+        """, (self.user_id, self.name, self.phone,
+              self.rrn, self.bank, self.account,
+              self.carrier))
         conn.commit()
 
         await interaction.response.send_message("승인 완료", ephemeral=True)
@@ -235,10 +265,31 @@ class PanelView(View):
             return
         await interaction.response.send_message("정보", ephemeral=True)
 
-# ================= 실행 =================
+# ================= 자동 갱신 =================
+@tasks.loop(seconds=30)
+async def update_panel():
+    global previous_premium
+    premium, rate = get_kimchi()
+    arr = arrow(premium, previous_premium)
+    previous_premium = premium
+    await panel_message.edit(
+        embed=embed_create(premium, rate, arr),
+        view=PanelView()
+    )
+
 @bot.event
 async def on_ready():
+    global panel_message, previous_premium
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
-    await channel.send("패널 실행됨", view=PanelView())
+
+    premium, rate = get_kimchi()
+    previous_premium = premium
+
+    panel_message = await channel.send(
+        embed=embed_create(premium, rate, "➖"),
+        view=PanelView()
+    )
+
+    update_panel.start()
 
 bot.run(TOKEN)
