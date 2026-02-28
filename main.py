@@ -176,7 +176,7 @@ class OTCView(View):
         # 인증 안 되었으면 인증 창 출력 후 종료
         embed = discord.Embed(
             title="🔒 본인인증 필요", 
-            description="자판기 기능을 이용하시려면 본인인증을 먼저 완료해야 합니다.\n아래에서 통신사를 선택해주세요.", 
+            description="코인대행을 이용하시려면 본인인증을 먼저 완료해야 합니다.\n아래에서 통신사를 선택해주세요.", 
             color=discord.Color.red()
         )
         await interaction.response.send_message(embed=embed, view=MainCarrierView(self.bot), ephemeral=True)
