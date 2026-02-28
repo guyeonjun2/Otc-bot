@@ -70,10 +70,6 @@ def embed_create(premium, rate, arrow_mark):
     e.add_field(name="🕒 마지막 갱신",
                 value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"),
                 inline=False)
-    )
-
-    e.set_image(url="https://cdn.discordapp.com/attachments/1476942061747044463/1477299593598468309/REZE_COIN_OTC.gif?ex=69a441f6&is=69a2f076&hm=ffa3babff8587f9ebae5a7241dae6f83f25257b4cbb4588908859c01249bd678&")
-    
     return e
 
 # ================= 충전 =================
