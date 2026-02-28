@@ -5,7 +5,7 @@ import os, asyncpg, aiohttp
 from datetime import datetime, timedelta
 
 TOKEN = os.getenv("TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("postgresql://postgres:ftdLqBhVQzpuEqKhtwUILzuOepuOoMGG@centerbeam.proxy.rlwy.net:30872/railway")
 
 ADMIN_USER_ID = 1472930278874939445
 LOG_CHANNEL_ID = 1476976182523068478
