@@ -11,7 +11,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 panel_message = None
 previous_premium = None  # 🔥 이전 김프 저장용
-BANNER_URL = "https://i.imgur.com/your_banner.png"
+BANNER_URL = "https://cdn.discordapp.com/attachments/1476942061747044463/1477299593598468309/REZE_COIN_OTC.gif?ex=69a441f6&is=69a2f076&hm=ffa3babff8587f9ebae5a7241dae6f83f25257b4cbb4588908859c01249bd678&"
 
 
 # ===== 환율 =====
