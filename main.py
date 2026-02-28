@@ -15,9 +15,8 @@ LOG_CHANNEL_ID = 1476976182523068478 # 로그 채널 ID
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True # DM 발송을 위해 필수
+intents.members = True 
 
-# 슬래시 명령어 동기화를 위한 커스텀 봇 클래스
 class MyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
@@ -27,7 +26,7 @@ class MyBot(commands.Bot):
         self.db = await asyncpg.create_pool(DATABASE_URL)
         # 테이블 생성
         await create_tables(self.db)
-        # 슬래시 명령어 동기화 (전체 서버)
+        # 명령어 동기화
         await self.tree.sync()
         print("✅ 슬래시 명령어 및 DB 동기화 완료!")
 
@@ -37,7 +36,7 @@ bot = MyBot()
 stock_amount = "현재 자판기 미완성"
 kimchi_premium = "현재 자판기 미완성"
 
-# ================= DB 초기화 함수 =================
+# ================= DB 초기화 =================
 async def create_tables(pool):
     async with pool.acquire() as conn:
         await conn.execute("""
@@ -61,7 +60,7 @@ async def create_tables(pool):
         );
         """)
 
-# ================= 관리자 승인 뷰 (DM 포함) =================
+# ================= 관리자 승인 뷰 =================
 class ApproveView(View):
     def __init__(self, user_id, amount):
         super().__init__(timeout=None)
@@ -76,6 +75,7 @@ class ApproveView(View):
 
     @discord.ui.button(label="✅ 승인", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
+        # 3초 제한 방지를 위해 응답 지연
         await interaction.response.defer(ephemeral=True) 
         
         try:
@@ -101,7 +101,7 @@ class ApproveView(View):
                             total_spent = users.total_spent + EXCLUDED.total_spent
                     """, self.user_id, self.amount)
 
-            # 유저에게 DM 발송
+            # 유저에게 DM
             target_user = await bot.fetch_user(self.user_id)
             dm_msg = ""
             if target_user:
@@ -129,6 +129,7 @@ class DepositModal(Modal, title="💰 충전 신청"):
     amount = TextInput(label="충전 금액", placeholder="숫자만 입력 (예: 10000)")
 
     async def on_submit(self, interaction: discord.Interaction):
+        # 모달 제출 시에도 defer 사용 가능하지만, 여기서는 짧은 로직이라 바로 응답
         if not self.amount.value.isdigit():
             await interaction.response.send_message("숫자만 입력해주세요.", ephemeral=True)
             return
@@ -157,6 +158,9 @@ class OTCView(View):
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
     async def info(self, interaction: discord.Interaction, button: Button):
+        # 정보 확인 시에도 딜레이 방지를 위해 defer 사용
+        await interaction.response.defer(ephemeral=True)
+        
         async with bot.db.acquire() as conn:
             user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", interaction.user.id)
             if not user:
@@ -169,19 +173,25 @@ class OTCView(View):
         embed = discord.Embed(title=f"👤 {interaction.user.display_name}님의 정보", color=discord.Color.blue())
         embed.add_field(name="💰 현재 잔액", value=f"**{balance:,.0f}원**", inline=False)
         embed.add_field(name="📊 누적 이용액", value=f"**{total_spent:,.0f}원**", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("📤 송금 기능 준비 중입니다.", ephemeral=True)
 
-# ================= 슬래시 명령어 등록 =================
+# ================= 슬래시 명령어 =================
 @bot.tree.command(name="otc", description="레제 코인대행 메뉴를 호출합니다.")
 async def otc_slash(interaction: discord.Interaction):
-    embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
-    embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
-    embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
-    await interaction.response.send_message(embed=embed, view=OTCView())
+    # 슬래시 명령어 호출 시 즉시 응답을 지연시켜 "응답하지 않습니다" 방지
+    # 단, 메뉴 임베드를 바로 보내야 하므로 여기서는 defer 없이 즉시 전송을 시도합니다.
+    # 만약 여기서도 에러가 나면 DB 연결 상태를 확인해야 합니다.
+    try:
+        embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
+        embed.add_field(name="💰 실시간 재고", value=stock_amount, inline=False)
+        embed.add_field(name="📈 실시간 김프", value=kimchi_premium, inline=False)
+        await interaction.response.send_message(embed=embed, view=OTCView())
+    except Exception as e:
+        print(f"명령어 실행 에러: {e}")
 
 if TOKEN:
     bot.run(TOKEN)
