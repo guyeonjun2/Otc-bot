@@ -22,18 +22,16 @@ previous_premium = None
 verified_users = set()
 
 
-# =========================
+# =======================
 # 김프 시스템
-# =========================
+# =======================
 
 def get_exchange_rate():
-    data = requests.get("https://open.er-api.com/v6/latest/USD").json()
-    return float(data["rates"]["KRW"])
+    return float(requests.get("https://open.er-api.com/v6/latest/USD").json()["rates"]["KRW"])
 
 
 def get_upbit_usdt_price():
-    data = requests.get("https://api.upbit.com/v1/ticker?markets=KRW-USDT").json()
-    return float(data[0]["trade_price"])
+    return float(requests.get("https://api.upbit.com/v1/ticker?markets=KRW-USDT").json()[0]["trade_price"])
 
 
 def calculate_kimchi_premium():
@@ -73,9 +71,9 @@ def create_embed(premium, rate, arrow):
     return embed
 
 
-# =========================
+# =======================
 # 인증 시스템
-# =========================
+# =======================
 
 class ApproveView(View):
     def __init__(self, user):
@@ -112,6 +110,7 @@ class VerifyModal(Modal, title="본인 인증 정보 입력"):
         self.add_item(self.account)
 
     async def on_submit(self, interaction: discord.Interaction):
+
         verify_channel = bot.get_channel(VERIFY_CHANNEL_ID)
         owner = await bot.fetch_user(OWNER_ID)
 
@@ -135,7 +134,27 @@ class VerifyModal(Modal, title="본인 인증 정보 입력"):
         await interaction.response.send_message("인증 요청이 접수되었습니다.", ephemeral=True)
 
 
+# =======================
 # 통신사 선택
+# =======================
+
+class MVNOCarrierView(View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="알뜰폰 LGU+", style=discord.ButtonStyle.secondary)
+    async def lgu(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VerifyModal("알뜰폰 LGU+"))
+
+    @discord.ui.button(label="알뜰폰 KT", style=discord.ButtonStyle.secondary)
+    async def kt(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VerifyModal("알뜰폰 KT"))
+
+    @discord.ui.button(label="알뜰폰 SKT", style=discord.ButtonStyle.secondary)
+    async def skt(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VerifyModal("알뜰폰 SKT"))
+
+
 class CarrierView(View):
     def __init__(self):
         super().__init__(timeout=60)
@@ -161,61 +180,53 @@ class CarrierView(View):
         )
 
 
-# 알뜰폰 전용 선택 (알뜰폰 버튼 다시 안뜸)
-class MVNOCarrierView(View):
-    def __init__(self):
-        super().__init__(timeout=60)
-
-    @discord.ui.button(label="알뜰폰 LGU+", style=discord.ButtonStyle.secondary)
-    async def lgu(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(VerifyModal("알뜰폰 LGU+"))
-
-    @discord.ui.button(label="알뜰폰 KT", style=discord.ButtonStyle.secondary)
-    async def kt(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(VerifyModal("알뜰폰 KT"))
-
-    @discord.ui.button(label="알뜰폰 SKT", style=discord.ButtonStyle.secondary)
-    async def skt(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(VerifyModal("알뜰폰 SKT"))
-
-
-# =========================
-# 메인 패널 버튼
-# =========================
+# =======================
+# 메인 패널
+# =======================
 
 class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    def check_verified(self, user_id):
-        return user_id in verified_users
+    async def require_verify(self, interaction):
+        await interaction.response.send_message(
+            "본인 인증 후 이용 가능합니다.",
+            view=CarrierView(),
+            ephemeral=True
+        )
 
     @discord.ui.button(label="송금", style=discord.ButtonStyle.primary, emoji="✈️")
     async def send_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.check_verified(interaction.user.id):
-            await interaction.response.send_message("본인 인증 후 이용 가능합니다.", ephemeral=True)
+        if interaction.user.id not in verified_users:
+            await self.require_verify(interaction)
             return
         await interaction.response.send_message("송금 기능입니다.", ephemeral=True)
 
     @discord.ui.button(label="충전", style=discord.ButtonStyle.success, emoji="💳")
     async def charge_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.check_verified(interaction.user.id):
-            await interaction.response.send_message("본인 인증 후 이용 가능합니다.", ephemeral=True)
+        if interaction.user.id not in verified_users:
+            await self.require_verify(interaction)
             return
         await interaction.response.send_message("충전 기능입니다.", ephemeral=True)
 
     @discord.ui.button(label="정보", style=discord.ButtonStyle.secondary, emoji="📊")
     async def info_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id not in verified_users:
+            await self.require_verify(interaction)
+            return
         await interaction.response.send_message("정보 기능입니다.", ephemeral=True)
 
     @discord.ui.button(label="계산", style=discord.ButtonStyle.secondary, emoji="🧮")
     async def calc_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id not in verified_users:
+            await self.require_verify(interaction)
+            return
         await interaction.response.send_message("계산 기능입니다.", ephemeral=True)
 
 
-# =========================
-# 30초 자동 갱신
-# =========================
+# =======================
+# 30초 갱신
+# =======================
 
 @tasks.loop(seconds=30)
 async def update_panel():
