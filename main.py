@@ -34,7 +34,7 @@ class MainView(View):
 async def on_ready():
     print(f"{bot.user} 로그인 완료")
 
-    channel_id = YOUR_CHANNEL_ID  # 🔥 여기에 채널 ID 숫자 넣기
+    channel_id = 1476942061747044463  # 🔥 여기에 채널 ID 숫자 넣기
     channel = bot.get_channel(channel_id)
 
     embed = discord.Embed(
