@@ -95,7 +95,6 @@ class OTCView(View):
 
     @discord.ui.button(label="📤 송금", style=discord.ButtonStyle.primary)
     async def send(self, interaction: discord.Interaction, button: Button):
-        # 현재는 기능이 없으므로 안내 메시지만 출력
         await interaction.response.send_message("📤 송금 기능은 현재 준비 중입니다.", ephemeral=True)
 
     @discord.ui.button(label="📊 정보", style=discord.ButtonStyle.secondary)
@@ -121,11 +120,11 @@ class OTCView(View):
     async def help(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="❓ 도움말 및 이용방법", color=discord.Color.orange())
         embed.add_field(name="💰 충전", value="버튼을 누르고 금액을 입력하면 관리자 승인 후 잔액이 충전됩니다.", inline=False)
-        embed.add_field(name="📊 정보", value="내 현재 등급과 보유 잔액을 확인할 수 있습니다.", inline=False)
+        embed.add_field(name="📤 송금", value="자신의 잔액을 타인에게 보낼 수 있는 기능입니다. (현재 준비 중)", inline=False)
         embed.add_field(name="📈 김프", value="업비트와 바이낸스 간의 시세 차이를 1분마다 실시간으로 갱신합니다.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ====== [3. 봇 클래스] ======
+# ====== [3. 봇 클래스 및 메인 로직] ======
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -133,10 +132,6 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
         self.db = await asyncpg.create_pool(DATABASE_URL)
-        async with self.db.acquire() as conn:
-            await conn.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance NUMERIC DEFAULT 0, total_spent NUMERIC DEFAULT 0);")
-            await conn.execute("CREATE TABLE IF NOT EXISTS deposit_requests (id SERIAL PRIMARY KEY, user_id BIGINT, amount NUMERIC, status TEXT DEFAULT 'pending', created_at TIMESTAMP DEFAULT NOW());")
-        
         await self.tree.sync()
         if not self.update_premium_loop.is_running():
             self.update_premium_loop.start() 
@@ -158,7 +153,6 @@ class MyBot(commands.Bot):
             current_k_premium = f"{premium:.2f}%"
             last_update_time = get_kst_now().strftime('%Y-%m-%d %H:%M:%S')
 
-            # 메시지 자동 수정 로직
             if last_otc_message:
                 try:
                     new_embed = discord.Embed(title="🪙 레제 코인대행", color=discord.Color.blue())
