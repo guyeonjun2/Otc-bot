@@ -168,12 +168,7 @@ class PanelView(View):
         super().__init__(timeout=None)
 
     # 상단 버튼 (계산기만 유지)
-    @discord.ui.button(label="계산기", style=discord.ButtonStyle.secondary, custom_id="calc_btn", row=0)
-    async def calc(self, interaction, button):
-        await interaction.response.send_modal(CalcModal())
-
-    # 하단 버튼 (이미지 레이아웃 참고)
-    @discord.ui.button(label="송금하기", style=discord.ButtonStyle.primary, custom_id="send_btn", row=1)
+@discord.ui.button(label="✈️ 송금", style=discord.ButtonStyle.primary, custom_id="send_btn", row=1)
     async def send(self, interaction, button):
         if not is_verified(interaction.user.id):
             view = View()
@@ -182,7 +177,7 @@ class PanelView(View):
             return
         await interaction.response.send_modal(SendModal())
 
-    @discord.ui.button(label="잔액 충전", style=discord.ButtonStyle.success, custom_id="charge_btn", row=1)
+    @discord.ui.button(label="💳 충전", style=discord.ButtonStyle.success, custom_id="charge_btn", row=1)
     async def charge(self, interaction, button):
         if not is_verified(interaction.user.id):
             view = View()
@@ -192,7 +187,7 @@ class PanelView(View):
         ensure_user(interaction.user.id)
         await interaction.response.send_modal(ChargeModal())
 
-    @discord.ui.button(label="정보 확인", style=discord.ButtonStyle.secondary, custom_id="info_btn", row=1)
+    @discord.ui.button(label="🙎‍♂️ 정보", style=discord.ButtonStyle.secondary, custom_id="info_btn", row=1)
     async def info(self, interaction, button):
         ensure_user(interaction.user.id)
         bal = get_balance(interaction.user.id)
