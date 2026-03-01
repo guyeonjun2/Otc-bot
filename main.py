@@ -144,7 +144,7 @@ class PanelView(View):
             color=0x000000
         )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=embed,
             view=CarrierView("본인인증"),
             ephemeral=True
@@ -152,30 +152,38 @@ class PanelView(View):
 
     @discord.ui.button(label="충전", style=discord.ButtonStyle.primary, row=0)
     async def charge(self, interaction, button):
+        await interaction.response.defer(ephemeral=True)
+
         if not is_verified(interaction.user.id):
             await self.require_verify(interaction)
             return
 
-        await interaction.response.send_message("충전 기능 실행", ephemeral=True)
+        await interaction.followup.send("충전 기능 실행", ephemeral=True)
 
     @discord.ui.button(label="송금", style=discord.ButtonStyle.secondary, row=0)
     async def send(self, interaction, button):
+        await interaction.response.defer(ephemeral=True)
+
         if not is_verified(interaction.user.id):
             await self.require_verify(interaction)
             return
 
-        await interaction.response.send_message("송금 기능 실행", ephemeral=True)
+        await interaction.followup.send("송금 기능 실행", ephemeral=True)
 
     @discord.ui.button(label="계산", style=discord.ButtonStyle.success, row=0)
     async def calc(self, interaction, button):
+        await interaction.response.defer(ephemeral=True)
+
         if not is_verified(interaction.user.id):
             await self.require_verify(interaction)
             return
 
-        await interaction.response.send_message("계산 기능 실행", ephemeral=True)
+        await interaction.followup.send("계산 기능 실행", ephemeral=True)
 
     @discord.ui.button(label="정보", style=discord.ButtonStyle.secondary, row=0)
     async def info(self, interaction, button):
+        await interaction.response.defer(ephemeral=True)
+
         if not is_verified(interaction.user.id):
             await self.require_verify(interaction)
             return
@@ -191,7 +199,7 @@ class PanelView(View):
         embed.add_field(name="인증 상태", value="✅ 인증 완료", inline=False)
         embed.add_field(name="보유 잔액", value=f"{balance:,}원", inline=False)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ================= 실행 =================
 @bot.event
