@@ -7,8 +7,8 @@ from discord.ext import commands, tasks
 from discord.ui import View, Button, Modal, TextInput, Select
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-PANEL_CHANNEL_ID = 123456789012345678  # 자판기 채널 ID
-OWNER_ID = 123456789012345678  # 관리자 ID
+PANEL_CHANNEL_ID = 1476976182523068478  # 자판기 채널 ID
+OWNER_ID = 1472930278874939445  # 관리자 ID
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
