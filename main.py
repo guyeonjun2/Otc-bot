@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 from discord.ui import View, Button, Modal, TextInput, Select
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-PANEL_CHANNEL_ID = 1476942061747044463
+PANEL_CHANNEL_ID = 1476976182523068478
 OWNER_ID = 1472930278874939445
 
 intents = discord.Intents.all()
