@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 from discord.ui import View, Button, Modal, TextInput, Select
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-PANEL_CHANNEL_ID = 1476976182523068478
+PANEL_CHANNEL_ID = 1476942061747044463
 OWNER_ID = 1472930278874939445
 
 intents = discord.Intents.all()
@@ -69,10 +69,10 @@ def arrow(cur, prev):
     return "➖"
 
 def create_embed(premium, rate, arr):
-    embed = discord.Embed(title="🪙 코인 대행 자판기", color=0x5865F2)
-    embed.add_field(name="김프", value=f"{premium}% {arr}", inline=False)
-    embed.add_field(name="환율", value=f"{rate}원", inline=False)
-    embed.add_field(name="갱신시간",
+    embed = discord.Embed(title="🪙 레제 코인대행", color=0x5865F2)
+    embed.add_field(name="💵 김프", value=f"{premium}% {arr}", inline=False)
+    embed.add_field(name="💵 환율", value=f"{rate}원", inline=False)
+    embed.add_field(name="⌚ 갱신",
                     value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"),
                     inline=False)
     return embed
