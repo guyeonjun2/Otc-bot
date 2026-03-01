@@ -229,10 +229,6 @@ async def on_ready():
     global panel_message, previous_premium
     print("봇 준비 완료")
 
-    class PanelView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
     premium, rate = get_kimchi()
     previous_premium = premium
