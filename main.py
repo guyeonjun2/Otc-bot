@@ -302,12 +302,6 @@ class SendAdminView(View):
         await user.send("송금 요청이 거부되었습니다.")
         await interaction.channel.delete(delay=3)
 
-# ================= 계산기 (기능 연결용 빈 모달) =================
-class CalcModal(Modal, title="코인 계산기"):
-    coin_amount = TextInput(label="코인 수량", placeholder="계산할 코인 수량을 입력하세요.")
-    async def on_submit(self, interaction):
-        await interaction.response.send_message("계산 기능은 준비 중입니다.", ephemeral=True)
-
 # ================= 영수증 =================
 
 class ReceiptModal(Modal, title="영수증 발급"):
