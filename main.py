@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-# 레제 코인 대행 자판기 - UI 1차 + 송금만 코인정보 입력 버전
-
-import pypandoc
-
-final_code = """
 import os
 import discord
 import sqlite3
@@ -12,7 +6,7 @@ from datetime import datetime, timedelta
 from discord.ext import commands, tasks
 from discord.ui import View, Modal, TextInput
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")  # Railway 환경변수 사용
 PANEL_CHANNEL_ID = 1476976182523068478
 OWNER_ID = 1472930278874939445
 
@@ -23,14 +17,14 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 conn = sqlite3.connect("data.db")
 cursor = conn.cursor()
 
-cursor.execute(\"\"\"
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     name TEXT,
     verified INTEGER DEFAULT 0,
     balance INTEGER DEFAULT 0
 )
-\"\"\")
+""")
 conn.commit()
 
 def ensure_user(user_id):
@@ -74,7 +68,7 @@ def create_embed(premium, rate, arr):
 
     embed = discord.Embed(
         title="🪙 레제 코인대행",
-        description="프리미엄 코인 대행 서비스를 이용해보세요.\\n아래 버튼을 눌러 원하는 기능을 선택하세요.",
+        description="신속한 코인대행 지금 이용해보세요!.\n아래 버튼들을 눌러 원하는 기능을 선택하세요.",
         color=color
     )
 
@@ -87,7 +81,7 @@ def create_embed(premium, rate, arr):
         inline=False
     )
 
-    embed.set_footer(text="Made by REZE | 작동여부:🟢")
+    embed.set_footer(text="REZE OTC | Made by REZE")
     return embed
 
 @tasks.loop(seconds=30)
@@ -106,7 +100,7 @@ async def admin_only(interaction):
         return False
     return True
 
-# ================= 충전 Modal (원래대로 금액만) =================
+# ================= 충전 =================
 class ChargeModal(Modal, title="충전 요청"):
     amount = TextInput(label="금액")
 
@@ -133,7 +127,26 @@ class ChargeModal(Modal, title="충전 요청"):
         await channel.send(embed=embed, view=ChargeAdminView(interaction.user.id, amount))
         await interaction.response.send_message("충전 요청 채널이 생성되었습니다.", ephemeral=True)
 
-# ================= 송금 Modal (코인정보 추가) =================
+class ChargeAdminView(View):
+    def __init__(self, user_id, amount):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.amount = amount
+
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
+    async def approve(self, interaction, button):
+        if not await admin_only(interaction): return
+        add_balance(self.user_id, self.amount)
+        await interaction.response.send_message("✅ 충전 승인 완료")
+        await interaction.channel.delete(delay=3)
+
+    @discord.ui.button(label="거부", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction, button):
+        if not await admin_only(interaction): return
+        await interaction.response.send_message("❌ 충전 거부 완료")
+        await interaction.channel.delete(delay=3)
+
+# ================= 송금 =================
 class SendModal(Modal, title="송금 요청"):
     amount = TextInput(label="금액")
     coin_type = TextInput(label="코인 종류 (예: USDT, BTC)")
@@ -167,26 +180,6 @@ class SendModal(Modal, title="송금 요청"):
 
         await channel.send(embed=embed, view=SendAdminView(interaction.user.id, amount))
         await interaction.response.send_message("송금 요청 채널이 생성되었습니다.", ephemeral=True)
-
-# ================= 관리자 View =================
-class ChargeAdminView(View):
-    def __init__(self, user_id, amount):
-        super().__init__(timeout=None)
-        self.user_id = user_id
-        self.amount = amount
-
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
-    async def approve(self, interaction, button):
-        if not await admin_only(interaction): return
-        add_balance(self.user_id, self.amount)
-        await interaction.response.send_message("✅ 충전 승인 완료")
-        await interaction.channel.delete(delay=3)
-
-    @discord.ui.button(label="거부", style=discord.ButtonStyle.danger)
-    async def reject(self, interaction, button):
-        if not await admin_only(interaction): return
-        await interaction.response.send_message("❌ 충전 거부 완료")
-        await interaction.channel.delete(delay=3)
 
 class SendAdminView(View):
     def __init__(self, user_id, amount):
@@ -235,17 +228,18 @@ class PanelView(View):
 async def on_ready():
     global panel_message, previous_premium
     print("봇 준비 완료")
+
     bot.add_view(PanelView())
+
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
     premium, rate = get_kimchi()
     previous_premium = premium
-    panel_message = await channel.send(embed=create_embed(premium, rate, "➖"), view=PanelView())
+
+    panel_message = await channel.send(
+        embed=create_embed(premium, rate, "➖"),
+        view=PanelView()
+    )
+
     update_panel.start()
 
 bot.run(TOKEN)
-"""
-
-file_path = "/mnt/data/reje_coin_ui_v3.txt"
-pypandoc.convert_text(final_code, 'plain', format='md', outputfile=file_path, extra_args=['--standalone'])
-
-file_path
