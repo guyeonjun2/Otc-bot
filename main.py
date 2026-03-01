@@ -103,13 +103,11 @@ class VerifyModal(Modal, title="본인 인증"):
     def __init__(self, telecom):
         super().__init__()
         self.telecom = telecom
-
         self.name = TextInput(label="이름")
         self.phone = TextInput(label="전화번호")
         self.ssn = TextInput(label="주민등록번호 앞 6자리", max_length=6)
         self.bank = TextInput(label="은행명")
         self.account = TextInput(label="계좌번호")
-
         self.add_item(self.name)
         self.add_item(self.phone)
         self.add_item(self.ssn)
@@ -118,35 +116,10 @@ class VerifyModal(Modal, title="본인 인증"):
 
     async def on_submit(self, interaction: discord.Interaction):
         cursor.execute("INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, 0)", (interaction.user.id,))
-        cursor.execute("UPDATE users SET name=?, verified=0 WHERE user_id=?",
+        cursor.execute("UPDATE users SET name=?, verified=1 WHERE user_id=?",
                        (self.name.value, interaction.user.id))
         conn.commit()
-
-        embed = discord.Embed(title="본인인증 요청")
-        embed.add_field(name="신청자", value=interaction.user.mention)
-        embed.add_field(name="통신사", value=self.telecom)
-        embed.add_field(name="이름", value=self.name.value)
-        embed.add_field(name="전화번호", value=self.phone.value)
-        embed.add_field(name="주민등록번호 앞6자리", value=self.ssn.value)
-        embed.add_field(name="은행명", value=self.bank.value)
-        embed.add_field(name="계좌번호", value=self.account.value)
-
-        owner = await bot.fetch_user(OWNER_ID)
-        await owner.send(embed=embed, view=VerifyAdminView(interaction.user.id))
-
-        await interaction.response.send_message("인증 요청이 전송되었습니다.", ephemeral=True)
-
-class VerifyAdminView(View):
-    def __init__(self, user_id):
-        super().__init__(timeout=None)
-        self.user_id = user_id
-
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="verify_approve")
-    async def approve(self, interaction: discord.Interaction, button: Button):
-        add_balance(self.user_id, 0)
-        cursor.execute("UPDATE users SET verified=1 WHERE user_id=?", (self.user_id,))
-        conn.commit()
-        await interaction.response.send_message("승인 완료")
+        await interaction.response.send_message("인증 완료", ephemeral=True)
 
 # ================= 충전 =================
 
@@ -156,11 +129,9 @@ class ChargeModal(Modal, title="충전 신청"):
     async def on_submit(self, interaction: discord.Interaction):
         amount = int(self.amount.value)
         channel = await interaction.guild.create_text_channel(f"충전요청-{interaction.user.name}")
-
         embed = discord.Embed(title="충전 요청")
         embed.add_field(name="신청자", value=interaction.user.mention)
         embed.add_field(name="금액", value=amount)
-
         await channel.send("@everyone", embed=embed,
                            view=ChargeAdminView(interaction.user.id, amount))
         await interaction.response.send_message("충전 요청 완료", ephemeral=True)
@@ -184,18 +155,14 @@ class SendModal(Modal, title="송금 신청"):
 
     async def on_submit(self, interaction: discord.Interaction):
         amount = int(self.amount.value)
-
         if get_balance(interaction.user.id) < amount:
             await interaction.response.send_message("잔액 부족", ephemeral=True)
             return
-
         channel = await interaction.guild.create_text_channel(f"송금요청-{interaction.user.name}")
-
         embed = discord.Embed(title="송금 요청")
         embed.add_field(name="신청자", value=interaction.user.mention)
         embed.add_field(name="주소", value=self.address.value)
         embed.add_field(name="금액", value=amount)
-
         await channel.send("@everyone", embed=embed,
                            view=SendAdminView(interaction.user.id, amount))
         await interaction.response.send_message("송금 요청 완료", ephemeral=True)
@@ -214,33 +181,34 @@ class SendAdminView(View):
 # ================= 영수증 =================
 
 class ReceiptModal(Modal, title="영수증 발급"):
-    channel_id = TextInput(label="채널 ID")
+    channel_id = TextInput(label="전송할 채널 ID")
     coin = TextInput(label="코인")
     amount = TextInput(label="금액")
     network = TextInput(label="네트워크")
     txid = TextInput(label="트랜잭션")
 
     async def on_submit(self, interaction: discord.Interaction):
-        if interaction.user.id != OWNER_ID:
-            return
-
         channel = await bot.fetch_channel(int(self.channel_id.value))
-
         embed = discord.Embed(title="🚀 송금이 완료되었습니다!")
         embed.description = "요청하신 송금이 블록체인 상에서 확인되었습니다."
-        embed.add_field(name="코인", value=self.coin.value)
-        embed.add_field(name="금액", value=self.amount.value)
-        embed.add_field(name="네트워크", value=self.network.value)
-        embed.add_field(name="상태", value="✅ 전송 완료")
-        embed.add_field(name="🔗 트랜잭션", value=self.txid.value)
-
+        embed.add_field(name="코인", value=self.coin.value, inline=False)
+        embed.add_field(name="금액", value=self.amount.value, inline=False)
+        embed.add_field(name="네트워크", value=self.network.value, inline=False)
+        embed.add_field(name="상태", value="✅ 전송 완료", inline=False)
+        embed.add_field(name="🔗 트랜잭션", value=self.txid.value, inline=False)
         await channel.send(embed=embed)
         await interaction.response.send_message("영수증 전송 완료", ephemeral=True)
 
-@bot.command()
-async def 영수증(ctx):
-    if ctx.author.id == OWNER_ID:
-        await ctx.send_modal(ReceiptModal())
+class ReceiptPanelView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🧾 영수증 발급", style=discord.ButtonStyle.success, custom_id="receipt_panel_button")
+    async def receipt_button(self, interaction: discord.Interaction, button: Button):
+        if interaction.user.id != OWNER_ID:
+            await interaction.response.send_message("관리자 전용입니다.", ephemeral=True)
+            return
+        await interaction.response.send_modal(ReceiptModal())
 
 # ================= 패널 =================
 
@@ -276,16 +244,7 @@ class PanelView(View):
         if not await self.check_verify(interaction): return
         await interaction.response.send_message(f"현재 잔액: {get_balance(interaction.user.id)}원", ephemeral=True)
 
-# ================= 자동 패널 =================
-
-@tasks.loop(seconds=30)
-async def update_panel():
-    global previous_premium
-    premium, rate = get_kimchi()
-    arr = arrow(premium, previous_premium)
-    previous_premium = premium
-    if panel_message:
-        await panel_message.edit(embed=embed_create(premium, rate, arr), view=PanelView())
+# ================= 자동 실행 =================
 
 @bot.event
 async def on_ready():
@@ -293,14 +252,16 @@ async def on_ready():
     print("봇 준비 완료")
 
     bot.add_view(PanelView())
+    bot.add_view(ReceiptPanelView())
 
+    # 자판기 생성
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
-
     premium, rate = get_kimchi()
     previous_premium = premium
-
     panel_message = await channel.send(embed=embed_create(premium, rate, "➖"), view=PanelView())
 
-    update_panel.start()
+    # 영수증 패널 DM 전송
+    owner = await bot.fetch_user(OWNER_ID)
+    await owner.send("영수증 발급 패널", view=ReceiptPanelView())
 
 bot.run(TOKEN)
