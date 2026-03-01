@@ -46,7 +46,7 @@ def get_kimchi():
 def create_embed(premium, rate):
     divider = "────────────────────────────"
     embed = discord.Embed(
-        title="🪙 레제 코인대행",
+        title="# 레제 코인대행",
         description="신속한 코인대행 지금 이용해보세요.\n아래 버튼들을 눌러 원하는 기능을 선택하세요.",
         color=0x000000
     )
