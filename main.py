@@ -89,26 +89,29 @@ class VerifyModal(Modal, title="본인 인증"):
         await interaction.response.send_message("요청이 전송되었습니다.", ephemeral=True)
 
 # ================= 통신사 선택 =================
+class CarrierSelect(discord.ui.Select):
+    def __init__(self, action_type):
+        self.action_type = action_type
+
+        options = [
+            discord.SelectOption(label="SKT"),
+            discord.SelectOption(label="KT"),
+            discord.SelectOption(label="LG U+")
+        ]
+
+        super().__init__(
+            placeholder="통신사를 선택하세요",
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(VerifyModal("본인인증"))
+
+
 class CarrierView(View):
     def __init__(self, action_type):
         super().__init__(timeout=60)
-        self.action_type = action_type
-
-        self.add_item(
-            Select(
-                placeholder="통신사를 선택하세요",
-                options=[
-                    discord.SelectOption(label="SKT"),
-                    discord.SelectOption(label="KT"),
-                    discord.SelectOption(label="LG U+")
-                ]
-            )
-        )
-
-        self.children[0].callback = self.select_callback
-
-    async def select_callback(self, interaction):
-        await interaction.response.send_modal(VerifyModal(self.action_type))
+        self.add_item(CarrierSelect(action_type))
 
 # ================= 오너 승인/거부 =================
 class OwnerDecisionView(View):
