@@ -201,6 +201,8 @@ class ChargeModal(Modal, title="충전 요청"):
 
     async def on_submit(self, interaction):
         guild = interaction.guild
+        amount = int(self.amount.value)
+
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True),
@@ -212,10 +214,22 @@ class ChargeModal(Modal, title="충전 요청"):
             overwrites=overwrites
         )
 
-        await channel.send(f"{interaction.user.mention} 충전 요청 {self.amount.value}원",
-                           view=ChargeAdminView(interaction.user.id, int(self.amount.value)))
+        embed = discord.Embed(
+            title="💳 충전 요청",
+            color=0x3498db
+        )
+        embed.add_field(name="요청자", value=interaction.user.mention, inline=False)
+        embed.add_field(name="금액", value=f"{amount}원", inline=False)
+        embed.add_field(name="상태", value="⏳ 승인 대기중", inline=False)
 
-        await interaction.response.send_message("충전 요청 채널이 생성되었습니다.", ephemeral=True)
+        await channel.send(embed=embed,
+                           view=ChargeAdminView(interaction.user.id, amount))
+
+        await interaction.response.send_message(
+            "충전 요청 채널이 생성되었습니다.",
+            ephemeral=True
+        )
+
 
 class ChargeAdminView(View):
     def __init__(self, user_id, amount):
@@ -223,16 +237,40 @@ class ChargeAdminView(View):
         self.user_id = user_id
         self.amount = amount
 
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="charge_ok")
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="charge_ok_embed")
     async def approve(self, interaction, button):
-        if not await admin_only(interaction): return
-        add_balance(self.user_id, self.amount)
-        await interaction.channel.delete()
+        if not await admin_only(interaction):
+            return
 
-    @discord.ui.button(label="거부", style=discord.ButtonStyle.danger, custom_id="charge_no")
+        add_balance(self.user_id, self.amount)
+
+        embed = discord.Embed(
+            title="✅ 충전 승인 완료",
+            color=0x2ecc71
+        )
+        embed.add_field(name="충전 금액", value=f"{self.amount}원", inline=False)
+
+        user = await bot.fetch_user(self.user_id)
+        await user.send(f"{self.amount}원 충전이 승인되었습니다.")
+
+        await interaction.channel.send(embed=embed)
+        await interaction.channel.delete(delay=3)
+
+    @discord.ui.button(label="거부", style=discord.ButtonStyle.danger, custom_id="charge_no_embed")
     async def reject(self, interaction, button):
-        if not await admin_only(interaction): return
-        await interaction.channel.delete()
+        if not await admin_only(interaction):
+            return
+
+        embed = discord.Embed(
+            title="❌ 충전 요청 거부",
+            color=0xe74c3c
+        )
+
+        user = await bot.fetch_user(self.user_id)
+        await user.send("충전 요청이 거부되었습니다.")
+
+        await interaction.channel.send(embed=embed)
+        await interaction.channel.delete(delay=3)
 
 # ================= 송금 =================
 
@@ -241,6 +279,15 @@ class SendModal(Modal, title="송금 요청"):
 
     async def on_submit(self, interaction):
         guild = interaction.guild
+        amount = int(self.amount.value)
+
+        if get_balance(interaction.user.id) < amount:
+            await interaction.response.send_message(
+                "잔액이 부족합니다.",
+                ephemeral=True
+            )
+            return
+
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             interaction.user: discord.PermissionOverwrite(view_channel=True),
@@ -252,10 +299,22 @@ class SendModal(Modal, title="송금 요청"):
             overwrites=overwrites
         )
 
-        await channel.send(f"{interaction.user.mention} 송금 요청 {self.amount.value}원",
-                           view=SendAdminView(interaction.user.id, int(self.amount.value)))
+        embed = discord.Embed(
+            title="💸 송금 요청",
+            color=0xf1c40f
+        )
+        embed.add_field(name="요청자", value=interaction.user.mention, inline=False)
+        embed.add_field(name="금액", value=f"{amount}원", inline=False)
+        embed.add_field(name="상태", value="⏳ 승인 대기중", inline=False)
 
-        await interaction.response.send_message("송금 요청 채널이 생성되었습니다.", ephemeral=True)
+        await channel.send(embed=embed,
+                           view=SendAdminView(interaction.user.id, amount))
+
+        await interaction.response.send_message(
+            "송금 요청 채널이 생성되었습니다.",
+            ephemeral=True
+        )
+
 
 class SendAdminView(View):
     def __init__(self, user_id, amount):
@@ -263,17 +322,40 @@ class SendAdminView(View):
         self.user_id = user_id
         self.amount = amount
 
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="send_ok")
+    @discord.ui.button(label="승인", style=discord.ButtonStyle.success, custom_id="send_ok_embed")
     async def approve(self, interaction, button):
-        if not await admin_only(interaction): return
+        if not await admin_only(interaction):
+            return
+
         sub_balance(self.user_id, self.amount)
-        await interaction.channel.delete()
 
-    @discord.ui.button(label="거부", style=discord.ButtonStyle.danger, custom_id="send_no")
+        embed = discord.Embed(
+            title="✅ 송금 승인 완료",
+            color=0x2ecc71
+        )
+        embed.add_field(name="송금 금액", value=f"{self.amount}원", inline=False)
+
+        user = await bot.fetch_user(self.user_id)
+        await user.send(f"{self.amount}원 송금이 승인되었습니다.")
+
+        await interaction.channel.send(embed=embed)
+        await interaction.channel.delete(delay=3)
+
+    @discord.ui.button(label="거부", style=discord.ButtonStyle.danger, custom_id="send_no_embed")
     async def reject(self, interaction, button):
-        if not await admin_only(interaction): return
-        await interaction.channel.delete()
+        if not await admin_only(interaction):
+            return
 
+        embed = discord.Embed(
+            title="❌ 송금 요청 거부",
+            color=0xe74c3c
+        )
+
+        user = await bot.fetch_user(self.user_id)
+        await user.send("송금 요청이 거부되었습니다.")
+
+        await interaction.channel.send(embed=embed)
+        await interaction.channel.delete(delay=3)
 # ================= 영수증 =================
 
 class ReceiptModal(Modal, title="영수증 발급"):
