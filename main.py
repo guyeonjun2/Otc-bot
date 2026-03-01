@@ -75,7 +75,7 @@ class VerifyModal(Modal, title="본인 인증"):
         owner = await bot.fetch_user(OWNER_ID)
 
         embed = discord.Embed(
-            title=f"📨 {self.action_type} 요청",
+            title="📨 본인인증 요청",
             color=0x000000
         )
         embed.add_field(name="이름", value=self.name.value, inline=False)
@@ -120,13 +120,13 @@ class OwnerDecisionView(View):
     @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
     async def approve(self, interaction, button):
         user = await bot.fetch_user(self.user_id)
-        await user.send(f"✅ {self.action_type} 승인되었습니다.")
+        await user.send("✅ 본인인증이 승인되었습니다.")
         await interaction.response.send_message("승인 완료", ephemeral=True)
 
     @discord.ui.button(label="거부", style=discord.ButtonStyle.danger)
     async def reject(self, interaction, button):
         user = await bot.fetch_user(self.user_id)
-        await user.send(f"❌ {self.action_type} 거부되었습니다.")
+        await user.send("❌ 본인인증이 거부되었습니다.")
         await interaction.response.send_message("거부 완료", ephemeral=True)
 
 # ================= 패널 버튼 =================
