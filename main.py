@@ -71,14 +71,14 @@ def arrow(cur, prev):
 def create_embed(premium, rate, arr):
     embed = discord.Embed(
         title="🪙 레제 코인대행", 
-        description="```코인대행 자판기 서비스를 이용해보세요.\n아래 메뉴에서 원하는 기능을 선택하세요.```",
+        description="```코인대행 서비스를 이용해보세요.\n아래 메뉴에서 원하는 기능을 선택하세요.```",
         color=0x2b2d31
     )
     # 요청하신 재고(0원) 항목을 김프 위에 추가
     embed.add_field(name="📦 재고", value="`0원`", inline=False)
-    embed.add_field(name="💵 김프", value=f"{premium}% {arr}", inline=True)
+    embed.add_field(name="📊 김프", value=f"{premium}% {arr}", inline=True)
     embed.add_field(name="💵 환율", value=f"{rate}원", inline=True)
-    embed.set_footer(text=f"made by Leje | 갱신: {(datetime.utcnow()+timedelta(hours=9)).strftime('%H:%M:%S')}")
+    embed.set_footer(text=f"made by Reze | 갱신: {(datetime.utcnow()+timedelta(hours=9)).strftime('%H:%M:%S')}")
     return embed
 
 @tasks.loop(seconds=30)
