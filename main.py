@@ -64,12 +64,19 @@ def arrow(cur, prev):
 
 def embed_create(premium, rate, arrow_mark):
     e = discord.Embed(title="🪙 레제 코인대행", color=0x5865F2)
+
     e.add_field(name="💰 재고", value="0원", inline=False)
     e.add_field(name="📊 김프", value=f"{premium}% {arrow_mark}", inline=False)
     e.add_field(name="💵 환율", value=f"{rate}원", inline=False)
-    e.add_field(name="🕒 마지막 갱신",
-                value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"),
-                inline=False)
+    e.add_field(
+        name="🕒 마지막 갱신",
+        value=(datetime.utcnow()+timedelta(hours=9)).strftime("%H:%M:%S"),
+        inline=False
+    )
+
+    # 🔥 배너 이미지 추가
+    e.set_image(url="https://media.discordapp.net/attachments/1476942061747044463/1477299593598468309/REZE_COIN_OTC.gif?ex=69a4eab6&is=69a39936&hm=f7627af6af0733d9f1960361d6f8519df959d749abb6333f8216990ea39e94d4&=")
+
     return e
 
 # ================= 충전 =================
