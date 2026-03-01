@@ -211,7 +211,8 @@ class PanelView(View):
         ensure_user(interaction.user.id)
         bal = get_balance(interaction.user.id)
         await interaction.response.send_message(f"현재 잔액: {bal}원", ephemeral=True)
-
+# ================= PanelView 인스턴스 =================
+panel_view = PanelView()
 # ================= 계산 =================
 
 class CalcModal(Modal, title="수익 계산"):
@@ -232,24 +233,17 @@ async def on_ready():
     global panel_message, previous_premium
     print("REZE OTC 봇 준비 완료")
 
-    bot.add_view(PanelView())
-    bot.add_view(VerifyAdminView(0))  # 🔥 이거 추가
+    bot.add_view(panel_view)
 
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
-
-    # 기존 메시지 삭제 (중복 방지)
-    async for msg in channel.history(limit=20):
-        if msg.author == bot.user:
-            await msg.delete()
-
     premium, rate = get_kimchi()
     previous_premium = premium
 
     panel_message = await channel.send(
         embed=create_embed(premium, rate, "➖"),
-        view=PanelView()
+        view=panel_view
     )
 
     update_panel.start()
-
+    
 bot.run(TOKEN)
