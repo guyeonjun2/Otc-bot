@@ -134,13 +134,23 @@ class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    async def require_verify(self, interaction):
+        embed = discord.Embed(
+            title="📱 본인인증 필요",
+            description="서비스 이용을 위해 본인인증을 진행해주세요.\n통신사를 선택하세요.",
+            color=0x000000
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=CarrierView("본인인증"),
+            ephemeral=True
+        )
+
     @discord.ui.button(label="충전", style=discord.ButtonStyle.primary, row=0)
     async def charge(self, interaction, button):
         if not is_verified(interaction.user.id):
-            await interaction.response.send_message(
-                view=CarrierView("본인인증"),
-                ephemeral=True
-            )
+            await self.require_verify(interaction)
             return
 
         await interaction.response.send_message("충전 기능 실행", ephemeral=True)
@@ -148,10 +158,7 @@ class PanelView(View):
     @discord.ui.button(label="송금", style=discord.ButtonStyle.secondary, row=0)
     async def send(self, interaction, button):
         if not is_verified(interaction.user.id):
-            await interaction.response.send_message(
-                view=CarrierView("본인인증"),
-                ephemeral=True
-            )
+            await self.require_verify(interaction)
             return
 
         await interaction.response.send_message("송금 기능 실행", ephemeral=True)
@@ -159,10 +166,7 @@ class PanelView(View):
     @discord.ui.button(label="계산", style=discord.ButtonStyle.success, row=0)
     async def calc(self, interaction, button):
         if not is_verified(interaction.user.id):
-            await interaction.response.send_message(
-                view=CarrierView("본인인증"),
-                ephemeral=True
-            )
+            await self.require_verify(interaction)
             return
 
         await interaction.response.send_message("계산 기능 실행", ephemeral=True)
@@ -170,10 +174,7 @@ class PanelView(View):
     @discord.ui.button(label="정보", style=discord.ButtonStyle.secondary, row=0)
     async def info(self, interaction, button):
         if not is_verified(interaction.user.id):
-            await interaction.response.send_message(
-                view=CarrierView("본인인증"),
-                ephemeral=True
-            )
+            await self.require_verify(interaction)
             return
 
         ensure_user(interaction.user.id)
