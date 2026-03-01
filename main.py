@@ -167,8 +167,7 @@ class PanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 상단 버튼 (계산기만 유지)
-@discord.ui.button(label="✈️ 송금", style=discord.ButtonStyle.primary, custom_id="send_btn", row=1)
+    @discord.ui.button(label="✈️ 송금", style=discord.ButtonStyle.primary, custom_id="send_btn", row=1)
     async def send(self, interaction, button):
         if not is_verified(interaction.user.id):
             view = View()
