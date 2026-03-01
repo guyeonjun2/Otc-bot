@@ -1,6 +1,6 @@
 # 수정 완료된 전체 코드 내용을 문자열로 작성합니다.
 
-code = import os
+import os
 import discord
 import sqlite3
 import requests
