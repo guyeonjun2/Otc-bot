@@ -136,25 +136,58 @@ class PanelView(View):
 
     @discord.ui.button(label="충전", style=discord.ButtonStyle.primary, row=0)
     async def charge(self, interaction, button):
-        await interaction.response.send_message(
-            view=CarrierView("충전"),
-            ephemeral=True
-        )
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_message(
+                view=CarrierView("본인인증"),
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message("충전 기능 실행", ephemeral=True)
 
     @discord.ui.button(label="송금", style=discord.ButtonStyle.secondary, row=0)
     async def send(self, interaction, button):
-        await interaction.response.send_message(
-            view=CarrierView("송금"),
-            ephemeral=True
-        )
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_message(
+                view=CarrierView("본인인증"),
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message("송금 기능 실행", ephemeral=True)
 
     @discord.ui.button(label="계산", style=discord.ButtonStyle.success, row=0)
     async def calc(self, interaction, button):
-        await interaction.response.send_message("계산 기능 준비중입니다.", ephemeral=True)
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_message(
+                view=CarrierView("본인인증"),
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message("계산 기능 실행", ephemeral=True)
 
     @discord.ui.button(label="정보", style=discord.ButtonStyle.secondary, row=0)
     async def info(self, interaction, button):
-        await interaction.response.send_message("정보 기능 준비중입니다.", ephemeral=True)
+        if not is_verified(interaction.user.id):
+            await interaction.response.send_message(
+                view=CarrierView("본인인증"),
+                ephemeral=True
+            )
+            return
+
+        ensure_user(interaction.user.id)
+        cursor.execute("SELECT balance FROM users WHERE user_id=?", (interaction.user.id,))
+        balance = cursor.fetchone()[0]
+
+        embed = discord.Embed(
+            title="📋 내 정보",
+            color=0x000000
+        )
+        embed.add_field(name="인증 상태", value="✅ 인증 완료", inline=False)
+        embed.add_field(name="보유 잔액", value=f"{balance:,}원", inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ================= 실행 =================
 @bot.event
