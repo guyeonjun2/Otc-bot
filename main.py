@@ -233,8 +233,15 @@ async def on_ready():
     print("REZE OTC 봇 준비 완료")
 
     bot.add_view(PanelView())
+    bot.add_view(VerifyAdminView(0))  # 🔥 이거 추가
 
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
+
+    # 기존 메시지 삭제 (중복 방지)
+    async for msg in channel.history(limit=20):
+        if msg.author == bot.user:
+            await msg.delete()
+
     premium, rate = get_kimchi()
     previous_premium = premium
 
