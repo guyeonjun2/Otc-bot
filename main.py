@@ -130,10 +130,14 @@ class ChargeAdminView(View):
 
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (self.user.id,))
         data = cursor.fetchone()
-        current_balance = data[0] if data else 0
-        new_balance = current_balance + self.amount
 
-        cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, self.user.id))
+        if data:
+            new_balance = data[0] + self.amount
+            cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, self.user.id))
+        else:
+            cursor.execute("INSERT INTO users (user_id, balance, verified) VALUES (?, ?, 1)",
+                           (self.user.id, self.amount))
+
         conn.commit()
 
         await self.user.send("승인")
@@ -377,10 +381,20 @@ async def update_panel():
 @bot.event
 async def on_ready():
     global panel_message, previous_premium
+
+    # ✅ Persistent View 재등록
+    bot.add_view(PanelView())
+    bot.add_view(ReceiptPanelView())
+
     channel = await bot.fetch_channel(PANEL_CHANNEL_ID)
 
     premium, rate = get_kimchi()
     previous_premium = premium
+
+    # 기존 패널 삭제 후 새로 생성
+    async for msg in channel.history(limit=10):
+        if msg.author == bot.user:
+            await msg.delete()
 
     panel_message = await channel.send(
         embed=embed_create(premium, rate, "➖"),
